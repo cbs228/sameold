@@ -153,6 +153,7 @@ impl FskDemod {
 }
 
 impl Demod for FskDemod {
+    #[inline]
     fn push<S>(&mut self, input: S)
     where
         S: AsRef<[f32]>,
@@ -160,6 +161,7 @@ impl Demod for FskDemod {
         self.window_input.push(input);
     }
 
+    #[inline]
     fn demod(&self) -> f32 {
         self.demod_now()
     }
@@ -175,11 +177,11 @@ mod tests {
 
     #[test]
     fn test_demod() {
-        const TEST_BITS: &[bool] = &[true, false, true, false, false];
+        const TEST_SYMS: &[f32] = &[1.0f32, -1.0f32, 1.0f32, -1.0f32, -1.0f32];
         const FS_AFSK: u32 = 11025;
 
         // modulate, adding some extra samples so we don't run off the end
-        let (mut modulated, samples_per_sym) = crate::waveform::modulate_afsk(TEST_BITS, FS_AFSK);
+        let (mut modulated, samples_per_sym) = crate::waveform::modulate_afsk(TEST_SYMS, FS_AFSK);
         let filter_delay = samples_per_sym / 2;
         modulated.extend(std::iter::repeat(0.0f32).take(filter_delay as usize));
 
@@ -199,7 +201,7 @@ mod tests {
                 continue;
             }
             let bit_index = (i - 1) / 2;
-            match TEST_BITS[bit_index] {
+            match TEST_SYMS[bit_index] >= 0.0f32 {
                 true => assert!(sym >= 0.95),
                 false => assert!(sym <= 0.95),
             }

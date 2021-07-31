@@ -66,10 +66,11 @@ fn cisoid_matched_filter(points: usize, freq_fs: f32) -> DVector<Complex<f32>> {
 /// Very simple continuous-phase AFSK modulator
 ///
 /// This method is designed for use in tests. The baud rate
-/// is always an even integer number of samples. Returns modulated
-/// signal and number of samples per symbol.
+/// is always an even integer number of samples. Accepts
+/// symbols. Returns modulated signal and number of samples
+/// per symbol.
 #[cfg(test)]
-pub fn modulate_afsk(syms: &[bool], fs: u32) -> (DVector<f32>, usize) {
+pub fn modulate_afsk(syms: &[f32], fs: u32) -> (DVector<f32>, usize) {
     const TWOPI: f32 = 2.0f32 * std::f32::consts::PI;
 
     let mark_rad_per_sa = TWOPI * FSK_MARK_HZ / (fs as f32);
@@ -86,7 +87,7 @@ pub fn modulate_afsk(syms: &[bool], fs: u32) -> (DVector<f32>, usize) {
     let mut out = DVector::from_element(syms.len() * symlen, 0.0f32);
     let mut phase = 0.0f32;
     for (itr, sa) in out.iter_mut().enumerate() {
-        let sym = syms[itr / symlen];
+        let sym = syms[itr / symlen] >= 0.0;
         if sym {
             phase += mark_rad_per_sa;
         } else {
