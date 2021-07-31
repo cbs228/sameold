@@ -1,3 +1,9 @@
+#[cfg(not(test))]
+use log::debug;
+
+#[cfg(test)]
+use std::println as debug;
+
 use crate::receiver::SameReceiver;
 
 /// Builds a SAME/EAS receiver
@@ -63,6 +69,7 @@ impl SameReceiverBuilder {
     /// Once built, the receiver chain is immediately ready to
     /// process samples.
     pub fn build(&self) -> SameReceiver {
+        debug!("{:?}", self);
         SameReceiver::from(self)
     }
 
