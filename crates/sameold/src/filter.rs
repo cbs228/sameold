@@ -242,8 +242,11 @@ where
 {
     /// Create empty window, filling it with zeros
     ///
-    /// Creates a new `Window` with the given `len`gth.
+    /// Creates a new `Window` with the given `len`gth, with
+    /// `len > 0`.
     pub fn new(len: usize) -> Self {
+        assert!(len > 0);
+
         let mut out = Self(SliceDeque::with_capacity(len));
         for _i in 0..len {
             out.0.push_front(T::zero());
@@ -271,8 +274,8 @@ where
     /// Append to sample window
     ///
     /// Appends the `input` slice to the right side of the Window.
-    /// The last sample of `input` becomes the last sample of the
-    /// Window slice.
+    /// The last sample of `input` becomes the right-most / most recent
+    /// sample of the Window slice.
     ///
     /// If the length of `input` exceeds the length of the Window,
     /// then the right-most chunk of `input` will be taken.
@@ -295,6 +298,19 @@ where
         self.0.extend_from_slice(input.as_ref());
     }
 
+    /// Append a scalar to the sample window
+    ///
+    /// Appends the `input` scalar to the right side of the Window.
+    /// It becomes the last / most recent sample of the Window
+    /// slice. Returns the sample that was formerly the oldest
+    /// sample in the Window.
+    #[inline]
+    pub fn push_scalar(&mut self, input: T) -> T {
+        let out = self.0.pop_front().unwrap();
+        self.0.push_back(input);
+        out
+    }
+
     /// Obtain the inner SliceDeque
     pub fn inner(&self) -> &SliceDeque<T> {
         &self.0
@@ -308,6 +324,18 @@ where
     #[inline]
     pub fn as_slice(&self) -> &[T] {
         self.0.as_slice()
+    }
+
+    /// Most recent element pushed into the Window
+    #[inline]
+    pub fn back(&self) -> T {
+        *self.0.back().unwrap()
+    }
+
+    /// Least recent element pushed into the Window
+    #[inline]
+    pub fn front(&self) -> T {
+        *self.0.front().unwrap()
     }
 }
 
@@ -427,8 +455,15 @@ mod tests {
 
         wind.push(&[-1.0f32, -2.0f32, 1.0f32, 2.0f32, 3.0f32, 4.0f32]);
         assert_eq!(&[1.0f32, 2.0f32, 3.0f32, 4.0f32], wind.as_slice());
-
+        assert_eq!(4.0f32, wind.back());
+        assert_eq!(1.0f32, wind.front());
         assert_eq!(4, wind.len());
+
+        // push individual samples works too
+        assert_eq!(1.0f32, wind.push_scalar(10.0f32));
+        assert_eq!(4, wind.len());
+        assert_eq!(&[2.0f32, 3.0f32, 4.0f32, 10.0f32], wind.as_slice());
+
         wind.reset();
         assert_eq!(4, wind.len());
         assert_eq!(&[0.0f32, 0.0f32, 0.0f32, 0.0f32], wind.as_slice());

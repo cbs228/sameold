@@ -22,6 +22,7 @@ use crate::receiver::SameReceiver;
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub struct SameReceiverBuilder {
     input_rate: u32,
+    dc_blocker_len: f32,
     agc_bandwidth: f32,
     agc_gain_limits: [f32; 2],
     timing_bandwidth_unlocked: f32,
@@ -49,6 +50,7 @@ impl SameReceiverBuilder {
     pub fn new(input_rate: u32) -> Self {
         Self {
             input_rate,
+            dc_blocker_len: 0.38,
             agc_bandwidth: 0.05f32,
             agc_gain_limits: [0.0, 1.0e6],
             timing_bandwidth_unlocked: 0.125f32,
@@ -71,6 +73,28 @@ impl SameReceiverBuilder {
     pub fn build(&self) -> SameReceiver {
         debug!("{:?}", self);
         SameReceiver::from(self)
+    }
+
+    /// DC-blocking filter length (fraction of baud rate)
+    ///
+    /// Some analog audio interconnects and demodulation
+    /// methods will produce an audio signal that has a DC
+    /// bias. A DC bias may cause the AGC loop or the timing
+    /// recovery to behave erratically, and it must be
+    /// eliminated.
+    ///
+    /// Set `len` to a non-zero value to use a DC-blocking
+    /// filter with a length of `len` SAME symbols. The SAME
+    /// baud rate is 520.83 symbols/second. This value can be
+    /// greater than 1.0 if you want the DC-blocking filter
+    /// to evolve very slowly. A `len` of `0.0` disables the
+    /// DC-blocking filter.
+    ///
+    /// The DC-blocking filter imposes a delay of `len`
+    /// baud.
+    pub fn with_dc_blocker_length(&mut self, len: f32) -> &mut Self {
+        self.dc_blocker_len = f32::max(0.0, len);
+        self
     }
 
     /// Automatic gain control bandwidth (fraction of baud rate)
@@ -257,6 +281,14 @@ impl SameReceiverBuilder {
     /// Input sampling rate (Hz)
     pub fn input_rate(&self) -> u32 {
         self.input_rate
+    }
+
+    /// DC-blocking filter length (fraction of baud rate)
+    ///
+    /// The DC-blocking filter imposes a delay of `len`
+    /// baud. A value of 0.0 disables the DC blocker.
+    pub fn dc_blocker_length(&self) -> f32 {
+        self.dc_blocker_len
     }
 
     /// AGC bandwidth (fraction of input rate)

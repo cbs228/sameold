@@ -12,6 +12,7 @@ use std::iter::{IntoIterator, Iterator};
 use crate::agc::Agc;
 use crate::builder::{EqualizerBuilder, SameReceiverBuilder};
 use crate::codesquelch::{CodeAndPowerSquelch, SquelchState};
+use crate::dcblock::DCBlocker;
 use crate::demod::{Demod, FskDemod};
 use crate::equalize::Equalizer;
 use crate::framing::{FrameOut, Framer};
@@ -49,6 +50,7 @@ use crate::symsync::TimingLoop;
 /// See [module documentation](index.html) for details.
 #[derive(Clone, Debug)]
 pub struct SameReceiver {
+    dc_block: DCBlocker,
     agc: Agc,
     demod: FskDemod,
     symsync: TimingLoop,
@@ -157,6 +159,7 @@ impl SameReceiver {
     ///
     /// All buffers and states are cleared.
     pub fn reset(&mut self) {
+        self.dc_block.reset();
         self.agc.reset();
         self.demod.reset();
         self.symsync.reset();
@@ -207,8 +210,8 @@ impl SameReceiver {
     // state changes, a [`FrameOut`] is emitted.
     #[inline]
     fn process_high_rate(&mut self, input: f32) -> Option<FrameOut> {
-        // high-rate processing: agc and push onto demodulator's buffer
-        let sa = self.agc.input(input);
+        // high-rate processing: dc block, agc, and push onto demodulator's buffer
+        let sa = self.agc.input(self.dc_block.filter(input));
         self.demod.push(&[sa]);
         self.ted_sample_clock += 1;
         self.input_sample_counter = self.input_sample_counter.wrapping_add(1);
@@ -363,7 +366,7 @@ impl From<&SameReceiverBuilder> for SameReceiver {
         let sps = crate::waveform::samples_per_symbol(input_rate);
         let (timing_bandwidth_unlocked, timing_bandwidth_locked) = cfg.timing_bandwidth();
         let (power_open, power_close) = cfg.squelch_power();
-
+        let dc_block = DCBlocker::new((cfg.dc_blocker_length() * sps) as usize);
         let agc = Agc::new(
             cfg.agc_bandwidth() * sps / input_rate as f32,
             cfg.agc_gain_limits()[0],
@@ -394,6 +397,7 @@ impl From<&SameReceiverBuilder> for SameReceiver {
         let samples_until_next_ted = symsync.samples_per_ted();
 
         Self {
+            dc_block,
             agc,
             demod,
             symsync,

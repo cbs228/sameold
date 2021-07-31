@@ -177,6 +177,7 @@
 mod agc;
 mod builder;
 mod codesquelch;
+mod dcblock;
 mod demod;
 mod equalize;
 mod filter;
