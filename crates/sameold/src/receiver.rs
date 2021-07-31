@@ -87,10 +87,10 @@ impl SameReceiver {
     /// return `None` if the input is exhausted and there
     /// are no new events.
     #[must_use = "iterators are lazy and do nothing unless consumed"]
-    pub fn iter<'rx, 'data, I, T>(&'rx mut self, input: I) -> SourceIter<'rx, 'data, T>
+    pub fn iter<'rx, I, T>(&'rx mut self, input: I) -> SourceIter<'rx, T>
     where
-        I: IntoIterator<Item = &'data f32> + IntoIterator<IntoIter = T>,
-        T: Iterator<Item = &'data f32>,
+        I: IntoIterator<Item = f32> + IntoIterator<IntoIter = T>,
+        T: Iterator<Item = f32>,
     {
         SourceIter {
             source: input.into_iter(),
@@ -148,7 +148,7 @@ impl SameReceiver {
     /// You probably want to [`reset()`](#method.reset) after
     /// calling this method.
     pub fn flush(&mut self) -> Option<Message> {
-        let two_seconds_of_zeros = std::iter::repeat(&0.0f32)
+        let two_seconds_of_zeros = std::iter::repeat(0.0f32)
             .zip(0..self.input_rate * 2)
             .map(|(sa, _)| sa);
         let mut out = None;
@@ -358,22 +358,22 @@ impl From<&SameReceiverBuilder> for SameReceiver {
 /// available samples have been consumed without any
 /// new events.
 #[derive(Debug)]
-pub struct SourceIter<'rx, 'data, I>
+pub struct SourceIter<'rx, I>
 where
-    I: Iterator<Item = &'data f32>,
+    I: Iterator<Item = f32>,
 {
     source: I,
     receiver: &'rx mut SameReceiver,
 }
 
-impl<'rx, 'data, I> Iterator for SourceIter<'rx, 'data, I>
+impl<'rx, 'data, I> Iterator for SourceIter<'rx, I>
 where
-    I: Iterator<Item = &'data f32>,
+    I: Iterator<Item = f32>,
 {
     type Item = FrameOut;
 
     fn next(&mut self) -> Option<Self::Item> {
-        for &sa in &mut self.source {
+        for sa in &mut self.source {
             match self.receiver.process_high_rate(sa) {
                 Some(out) => {
                     info!(
@@ -463,7 +463,7 @@ mod tests {
         println!("{:?}", rx);
 
         let mut out: Option<crate::Message> = None;
-        for evt in rx.iter(afsk.iter()) {
+        for evt in rx.iter(afsk.iter().map(|sa| *sa)) {
             if let FrameOut::Ready(Ok(msg)) = evt {
                 out = Some(msg);
             }

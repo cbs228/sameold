@@ -36,7 +36,7 @@
 //! ```
 //! use sameold::{FrameOut, Message, SameReceiverBuilder};
 //!
-//! # let some_audio_source_iterator = || std::iter::once(&0.0f32);
+//! # let some_audio_source_iterator = || std::iter::once(0.0f32);
 //! #
 //! // create a SameReceiver with your audio sampling rate
 //! let mut rx = SameReceiverBuilder::new(22050)
