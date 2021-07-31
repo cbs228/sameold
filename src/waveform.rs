@@ -11,6 +11,13 @@ pub const FSK_SPACE_HZ: f32 = 1562.5;
 /// Baud rate (Hz)
 pub const BAUD_HZ: f32 = 520.83;
 
+/// SAME preamble byte
+///
+/// The preamble byte is repeated sixteen times before every
+/// SAME message. Here, we will use four occurrences of it
+/// for synchronization.
+pub const PREAMBLE: u32 = 0xabababab;
+
 /// SAME baud rate at the given sampling frequency, in fractional samples
 pub fn samples_per_symbol(fs: u32) -> f32 {
     fs as f32 / BAUD_HZ as f32
@@ -88,6 +95,56 @@ pub fn modulate_afsk(syms: &[bool], fs: u32) -> (DVector<f32>, usize) {
     (out, symlen)
 }
 
+/// Convert bytes to symbols
+///
+/// Converts bytes to SAME symbols. +1 is emitted for one bits,
+/// and -1 is emitted for zero bits. The symbols are output in
+/// SAME order (least significant bit first).
+#[cfg(test)]
+pub fn bytes_to_symbols(bytes: &[u8]) -> Vec<f32> {
+    let mut v = Vec::with_capacity(bytes.len() * 8);
+    for byte in bytes {
+        let mut word = *byte;
+        for _i in 0..8 {
+            let bit = word & 0x01;
+            if bit == 1 {
+                v.push(1.0f32);
+            } else {
+                v.push(-1.0f32);
+            }
+            word = word >> 1;
+        }
+    }
+
+    v
+}
+
+/// Convert bytes to samples with two samples per symbol
+///
+/// Converts bytes to SAME samples. +1 is emitted for one bits,
+/// and -1 is emitted for zero bits. The symbols are output in
+/// SAME order (least significant bit first). Two samples are
+/// emitted for every symbol.
+#[cfg(test)]
+pub fn bytes_to_samples(bytes: &[u8]) -> Vec<f32> {
+    let mut v = Vec::with_capacity(bytes.len() * 8 * 2);
+    for byte in bytes {
+        let mut word = *byte;
+        for _i in 0..8 {
+            let bit = word & 0x01;
+            v.push(0.0f32);
+            if bit == 1 {
+                v.push(1.0f32);
+            } else {
+                v.push(-1.0f32);
+            }
+            word = word >> 1;
+        }
+    }
+
+    v
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,5 +161,19 @@ mod tests {
             let d = (item - gain * Complex::new(EXPECT_REAL[i], EXPECT_IMAG[i])).norm();
             assert!(d < 1e-4);
         }
+    }
+
+    #[test]
+    fn test_bytes_to_symbols() {
+        // symbol mapping for [0xAB, 0x21]
+        const EXPECT_SYMS: &[f32] = &[
+            1.0f32, 1.0f32, -1.0f32, 1.0f32, -1.0f32, 1.0f32, -1.0f32, 1.0f32, 1.0f32, -1.0f32,
+            -1.0f32, -1.0f32, -1.0f32, 1.0f32, -1.0f32, -1.0f32,
+        ];
+
+        const BYTES: &[u8] = &[0xAB, 0x21];
+
+        let syms = bytes_to_symbols(BYTES);
+        assert_eq!(EXPECT_SYMS, syms.as_slice());
     }
 }

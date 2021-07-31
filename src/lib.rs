@@ -2,6 +2,7 @@
 
 #![allow(dead_code)]
 
+mod codesquelch;
 mod demod;
 mod filter;
 mod symsync;
