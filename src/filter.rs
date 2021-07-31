@@ -66,18 +66,18 @@ use std::convert::AsRef;
 
 use nalgebra::base::Scalar;
 use nalgebra::DVector;
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use slice_deque::SliceDeque;
 
 /// FIR filter coefficients
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq)]
 pub struct FilterCoeff<T>(DVector<T>)
 where
-    T: Copy + Scalar;
+    T: Copy + Scalar + One + Zero;
 
 impl<T> FilterCoeff<T>
 where
-    T: Copy + Scalar,
+    T: Copy + Scalar + One + Zero,
 {
     /// Create from slice
     ///
@@ -96,6 +96,18 @@ where
             inp.len(),
             inp.iter().rev().map(|d| *d),
         ))
+    }
+
+    /// Create an identity filter
+    ///
+    /// The identity filter is a "no-op" impulse response
+    pub fn from_identity(len: usize) -> Self {
+        let mut out = FilterCoeff(DVector::from_iterator(
+            len,
+            std::iter::repeat(T::zero()).take(len),
+        ));
+        out.0[len - 1] = T::one();
+        out
     }
 
     /// Number of filter coefficients
@@ -124,20 +136,92 @@ where
         multiply_accumulate(history.as_ref(), self.as_ref())
     }
 
+    /// Reset to identity filter
+    ///
+    /// The filter coefficients are reset to a "no-op" identity
+    /// filter.
+    pub fn identity(&mut self) {
+        let len = self.0.len();
+        for coeff in self.0.iter_mut() {
+            *coeff = T::zero();
+        }
+        self.0[len - 1] = T::one();
+    }
+
+    /// Return filter coefficients as slice
+    ///
+    /// The filter coefficients are in *reverse* order
+    /// from their Octave representation.
+    #[inline]
+    pub fn as_slice(&self) -> &[T] {
+        self.0.as_slice()
+    }
+
+    /// Return filter coefficients as mutable slice
+    ///
+    /// The filter coefficients are in *reverse* order
+    /// from their Octave representation.
+    #[inline]
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        self.0.as_mut_slice()
+    }
+
     /// Obtain filter coefficients
     ///
     /// The coefficients are output in reverse order.
+    #[inline]
     pub fn inner(&self) -> &DVector<T> {
         &self.0
+    }
+
+    /// Obtain filter coefficients (mutable)
+    ///
+    /// The coefficients are output in reverse order.
+    #[inline]
+    pub fn inner_mut(&mut self) -> &mut DVector<T> {
+        &mut self.0
     }
 }
 
 impl<T> AsRef<[T]> for FilterCoeff<T>
 where
-    T: Copy + Scalar,
+    T: Copy + Scalar + One + Zero,
 {
+    #[inline]
     fn as_ref(&self) -> &[T] {
-        self.0.as_slice()
+        self.as_slice()
+    }
+}
+
+impl<T> AsMut<[T]> for FilterCoeff<T>
+where
+    T: Copy + Scalar + One + Zero,
+{
+    #[inline]
+    fn as_mut(&mut self) -> &mut [T] {
+        self.as_mut_slice()
+    }
+}
+
+impl<T> std::ops::Index<usize> for FilterCoeff<T>
+where
+    T: Copy + Scalar + One + Zero,
+{
+    type Output = T;
+
+    #[inline]
+    fn index(&self, ind: usize) -> &T {
+        self.0.index(ind)
+    }
+}
+
+impl<T> std::ops::IndexMut<usize> for FilterCoeff<T>
+where
+    T: Copy + Scalar + One + Zero,
+{
+    #[inline]
+    fn index_mut(&mut self, ind: usize) -> &mut T {
+        self.0.index_mut(ind)
     }
 }
 
@@ -313,6 +397,19 @@ mod tests {
         let out = filter.filter(INPUT);
         assert_approx_eq!(out.re, 1.0f32);
         assert_approx_eq!(out.im, 1.0f32);
+    }
+
+    #[test]
+    fn test_filter_identity() {
+        const EXPECT: &[f32] = &[0.0f32, 0.0f32, 0.0f32, 1.0f32];
+
+        let mut filter = FilterCoeff::<f32>::from_identity(4);
+        assert_eq!(EXPECT, filter.as_ref());
+        assert_eq!(10.0f32, filter.filter(&[10.0f32]));
+
+        filter[2] = 5.0f32;
+        filter.identity();
+        assert_eq!(EXPECT, filter.as_ref());
     }
 
     #[test]
