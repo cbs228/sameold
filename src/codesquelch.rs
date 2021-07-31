@@ -15,7 +15,12 @@
 //! must be manually reset.
 
 use arraydeque::ArrayDeque;
+
+#[cfg(not(test))]
 use log::info;
+
+#[cfg(test)]
+use std::println as info;
 
 /// Access code squelch
 ///

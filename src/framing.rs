@@ -5,7 +5,11 @@ use std::convert::TryFrom;
 use arraydeque::ArrayDeque;
 use arrayvec::ArrayVec;
 
+#[cfg(not(test))]
 use log::{debug, info};
+
+#[cfg(test)]
+use std::{println as debug, println as info};
 
 use crate::message::{Message, MessageDecodeErr};
 

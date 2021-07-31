@@ -29,7 +29,11 @@
 
 use crate::filter::{FilterCoeff, Window};
 
+#[cfg(not(test))]
 use log::{debug, trace};
+
+#[cfg(test)]
+use std::{println as debug, println as trace};
 
 /// No training sequence defined; can't enter training mode
 #[derive(Clone, Debug, Eq, PartialEq)]
