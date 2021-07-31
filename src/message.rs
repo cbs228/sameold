@@ -71,7 +71,7 @@ pub enum MessageDecodeErr {
 
 impl Message {
     /// Convert to string representation
-    fn as_str(&self) -> &str {
+    pub fn as_str(&self) -> &str {
         match self {
             Self::StartOfMessage(m) => m.message(),
             Self::EndOfMessage => PREFIX_MESSAGE_END,
