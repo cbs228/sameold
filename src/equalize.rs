@@ -29,6 +29,8 @@
 
 use crate::filter::{FilterCoeff, Window};
 
+use log::{debug, trace};
+
 /// No training sequence defined; can't enter training mode
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NoTrainingSequenceErr;
@@ -172,6 +174,13 @@ impl Equalizer {
             byte |= (bit as u8) << bitind;
         }
 
+        trace!(
+            "equalizer: byte: {:#04x} \"{:?}\", err: {:.4}",
+            byte,
+            byte as char,
+            last_err
+        );
+
         (byte, last_err)
     }
 
@@ -216,6 +225,15 @@ impl Equalizer {
     /// adaptive filter is not allowed to evolve.
     pub fn is_enabled(&self) -> bool {
         self.mode != EqualizerState::Disabled
+    }
+
+    /// True if the adaptive equalizer is in training mode
+    pub fn is_training(&self) -> bool {
+        if let EqualizerState::EnabledTraining(_, _) = self.mode {
+            true
+        } else {
+            false
+        }
     }
 
     // Evaluates filters against the input
@@ -271,6 +289,7 @@ impl Equalizer {
                 count += 1;
                 if count >= 32 {
                     // we're done
+                    debug!("equalizer: end training with err: {:.4}", err);
                     self.mode = EqualizerState::EnabledFeedback;
                 } else {
                     self.mode = EqualizerState::EnabledTraining(sa, count)
