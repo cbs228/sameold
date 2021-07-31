@@ -352,6 +352,20 @@ impl CodeAndPowerSquelch {
         self.symbol_counter
     }
 
+    /// Power tracker state
+    ///
+    /// Returns the smoothed *symbol power* estimate as of
+    /// the last call to `input()`.
+    ///
+    /// Since the input signal is typically normalized to
+    /// an amplitude of 1.0, these values will *typically*
+    /// range from 0.0 (no signal at all) to 1.0 (maximum
+    /// symbol power). Values above 1.0 are possible,
+    /// however.
+    pub fn power(&self) -> f32 {
+        self.power_track.power
+    }
+
     /// Is the squelch synchronized?
     ///
     /// If the system is synchronized, synchronized samples

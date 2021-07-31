@@ -1,8 +1,10 @@
 //! Full receiver chain
 
 #[cfg(not(test))]
-use log::{info, warn};
+use log::{info, trace, warn};
 
+#[cfg(test)]
+use std::println as trace;
 #[cfg(test)]
 use std::println as info;
 #[cfg(test)]
@@ -246,6 +248,15 @@ impl SameReceiver {
         self.samples_until_next_ted = sync_out.0;
         let bit_samples = sync_out.1?;
 
+        if self.squelch.symbol_count() % Self::TRACE_LOG_INTERVAL_SYMS == 0 {
+            trace!(
+                "[{:<14}]: signal magnitude {:0.1}, symbol power: {:0.2}",
+                self.input_sample_counter(),
+                1.0f32 / self.agc.gain(),
+                self.squelch.power()
+            );
+        }
+
         // 3. power and access code correlation squelch
         let squelch_out = self.squelch.input(&bit_samples.data)?;
         let is_resync = match &squelch_out.state {
@@ -295,6 +306,9 @@ impl SameReceiver {
     // This is the maximum length of the analog voice message, and
     // *NOT* the length of the digital data
     const MAX_MESSAGE_DURATION_SECS: u64 = 135;
+
+    // Print trace-level messages about once per second
+    const TRACE_LOG_INTERVAL_SYMS: u64 = 520;
 }
 
 impl From<&SameReceiverBuilder> for SameReceiver {
@@ -381,7 +395,7 @@ where
             match self.receiver.process_high_rate(sa) {
                 Some(out) => {
                     info!(
-                        "receiver [{:12}]: {:?}",
+                        "receiver [{:<14}]: {:?}",
                         self.receiver.input_sample_counter(),
                         out
                     );

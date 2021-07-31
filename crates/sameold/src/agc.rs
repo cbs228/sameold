@@ -84,6 +84,15 @@ impl Agc {
     pub fn lock(&mut self, lock: bool) {
         self.locked = lock;
     }
+
+    /// Obtain gain value
+    ///
+    /// Obtain the current gain value used to normalize the
+    /// input. This value is multiplied by the input to
+    /// produce the gain-controlled signal.
+    pub fn gain(&self) -> f32 {
+        self.gain
+    }
 }
 
 #[cfg(test)]
