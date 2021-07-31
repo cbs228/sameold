@@ -62,18 +62,22 @@ pub enum Message {
 }
 
 /// Error decoding a `MessageHeader`
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Error, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum MessageDecodeErr {
     /// The starting prefix of the message was not recognized
+    #[error("invalid SAME header: unrecognized prefix")]
     UnrecognizedPrefix,
 
     /// Header contains non-ASCII characters
+    #[error("invalid SAME header: message contains non-ASCII characters")]
     NotAscii,
 
     /// Header is shorter than the minimum length for a valid message
+    #[error("invalid SAME header: decoded message too short")]
     TooShort,
 
     /// Header does not match general format
+    #[error("invalid SAME header: message text does not match required pattern")]
     Malformed,
 }
 
@@ -553,37 +557,6 @@ impl TryFrom<(String, &[u8])> for MessageHeader {
     #[inline]
     fn try_from(inp: (String, &[u8])) -> Result<Self, Self::Error> {
         Self::new_with_errors(inp.0, inp.1)
-    }
-}
-
-impl fmt::Display for MessageDecodeErr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            MessageDecodeErr::UnrecognizedPrefix => {
-                write!(f, "invalid SAME header: unrecognized prefix")
-            }
-            MessageDecodeErr::NotAscii => {
-                write!(
-                    f,
-                    "invalid SAME header: message contains non-ASCII characters"
-                )
-            }
-            MessageDecodeErr::TooShort => {
-                write!(f, "invalid SAME header: decoded message too short")
-            }
-            MessageDecodeErr::Malformed => {
-                write!(
-                    f,
-                    "invalid SAME header: message text does not match required pattern"
-                )
-            }
-        }
-    }
-}
-
-impl std::error::Error for MessageDecodeErr {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        None
     }
 }
 
