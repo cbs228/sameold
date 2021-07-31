@@ -6,8 +6,10 @@ use arraydeque::ArrayDeque;
 use arrayvec::ArrayVec;
 
 #[cfg(not(test))]
-use log::{info, warn};
+use log::{debug, info, warn};
 
+#[cfg(test)]
+use std::println as debug;
 #[cfg(test)]
 use std::println as info;
 #[cfg(test)]
@@ -183,7 +185,7 @@ impl Framer {
             // emit an answer if one is Ready.
             let out = self.end(symbol_count);
 
-            info!("burst: searching: framer restarted");
+            debug!("burst: searching: framer restarted");
             self.state = State::PrefixSearch(0, 0);
             let _ = self.input(data, symbol_count, false);
             match out {

@@ -19,10 +19,10 @@ use std::default::Default;
 use arraydeque::ArrayDeque;
 
 #[cfg(not(test))]
-use log::info;
+use log::debug;
 
 #[cfg(test)]
-use std::println as info;
+use std::println as debug;
 
 /// Squelch state
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -244,14 +244,14 @@ impl CodeAndPowerSquelch {
         let report_state = if new_sync {
             self.sample_clock = match self.sample_clock {
                 None => {
-                    info!(
+                    debug!(
                         "squelch: acquired byte sync: {} errors, power {:.3}",
                         err, pwr
                     );
                     Some(0)
                 }
                 Some(n) => {
-                    info!(
+                    debug!(
                         "squelch: adjust byte sync by +{} symbols with {} errors, power {:.3}",
                         8 - n,
                         err,
@@ -262,7 +262,7 @@ impl CodeAndPowerSquelch {
             };
             SquelchState::Acquired
         } else if self.is_sync() && !self.power_history.front().expect("bad power history") {
-            info!(
+            debug!(
                 "squelch: lost sync: symbol power {:.3} below threshold",
                 pwr
             );
