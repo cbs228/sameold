@@ -195,7 +195,7 @@ impl MessageHeader {
     /// The ultimate source of the message, such as
     /// `Originator::WeatherService` for the National Weather Service
     pub fn originator(&self) -> Originator {
-        Originator::from(self.originator_str())
+        Originator::from((self.originator_str(), self.callsign()))
     }
 
     /// Originator code (as string)

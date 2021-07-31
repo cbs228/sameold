@@ -107,7 +107,7 @@
 //! # ).expect("fail to parse");
 //!
 //! // what organization originated the message?
-//! assert_eq!(Originator::WeatherService, hdr.originator());
+//! assert_eq!(Originator::NationalWeatherService, hdr.originator());
 //!
 //! // event code
 //! // in actual implementations, handle this error gracefully!

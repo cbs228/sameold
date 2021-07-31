@@ -14,16 +14,27 @@ use thiserror::Error;
 /// representations. Using them `.as_ref()` or via `Display` will
 /// show a human-readable string.
 ///
+/// The variants `NationalWeatherService` and `EnvironmentCanada`
+/// must be constructed using both the originator string and the
+/// station callsign.
+///
 /// ```
 /// use sameold::Originator;
 ///
 /// let orig = Originator::from("WXR");
 /// assert_eq!(Originator::WeatherService, orig);
 /// assert_eq!("WXR", orig.as_ref());
-/// assert_eq!("National Weather Service", orig.as_display_str());
-/// assert_eq!("National Weather Service", &format!("{}", orig));
+/// assert_eq!("Weather Service", orig.as_display_str());
+/// assert_eq!("Weather Service", &format!("{}", orig));
 ///
 /// assert_eq!(Originator::Unknown, Originator::from("HUH"));
+///
+/// let orig = Originator::from(("WXR", "KLOX/NWS"));
+/// assert_eq!("National Weather Service", orig.as_display_str());
+/// assert_eq!("WXR", orig.as_str());
+///
+/// assert_eq!(Originator::EnvironmentCanada,
+///            Originator::from(("WXR", "EC/GC/CA")));
 /// ```
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, Hash, strum_macros::EnumMessage, strum_macros::EnumString,
@@ -48,8 +59,16 @@ pub enum Originator {
     CivilAuthority,
 
     /// National Weather Service or Environment Canada
-    #[strum(serialize = "WXR", detailed_message = "National Weather Service")]
+    #[strum(serialize = "WXR", detailed_message = "Weather Service")]
     WeatherService,
+
+    /// National Weather Service
+    #[strum(disabled, serialize = "WXR")]
+    NationalWeatherService,
+
+    /// Environment Canada
+    #[strum(disabled, serialize = "WXR")]
+    EnvironmentCanada,
 
     /// EAS participant (usu. broadcast station)
     #[strum(
@@ -64,7 +83,11 @@ impl Originator {
     ///
     /// Converts to a human-readable string, like "`Civil authorities`."
     pub fn as_display_str(&self) -> &'static str {
-        self.get_detailed_message().expect("missing definition")
+        match self {
+            Originator::NationalWeatherService => "National Weather Service",
+            Originator::EnvironmentCanada => "Environment Canada",
+            _ => self.get_detailed_message().expect("missing definition"),
+        }
     }
 
     /// SAME string representation
@@ -79,6 +102,24 @@ impl Originator {
 impl From<&str> for Originator {
     fn from(s: &str) -> Originator {
         match Originator::from_str(s) {
+            Ok(orig) => orig,
+            Err(_e) => Originator::Unknown,
+        }
+    }
+}
+
+impl From<(&str, &str)> for Originator {
+    fn from(orig_and_call: (&str, &str)) -> Originator {
+        match Originator::from_str(orig_and_call.0) {
+            Ok(Originator::WeatherService) => {
+                if orig_and_call.1.ends_with("/NWS") {
+                    Originator::NationalWeatherService
+                } else if orig_and_call.1.starts_with("EC/") {
+                    Originator::EnvironmentCanada
+                } else {
+                    Originator::WeatherService
+                }
+            }
             Ok(orig) => orig,
             Err(_e) => Originator::Unknown,
         }
