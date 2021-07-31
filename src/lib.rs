@@ -2,6 +2,7 @@
 
 #![allow(dead_code)]
 
+mod agc;
 mod codesquelch;
 mod demod;
 mod equalize;
