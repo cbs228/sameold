@@ -54,7 +54,7 @@ impl SameReceiverBuilder {
             preamble_max_errors: 2,
             equalizer: Some(EqualizerBuilder::default()),
             frame_prefix_max_errors: 2,
-            frame_max_invalid_bytes: 10,
+            frame_max_invalid_bytes: 5,
         }
     }
 
@@ -220,15 +220,28 @@ impl SameReceiverBuilder {
 
     /// Maximum frame invalid bytes
     ///
-    /// The framer will detect the end of transmission after a
-    /// frame total of `max_invalid` "invalid" SAME characters
-    /// have been received. SAME/EAS uses ASCII bytes, but not
-    /// all valid ASCII bytes are valid as SAME characters.
+    /// The framer will detect the end of a SAME burst after a
+    /// total of `max_invalid` "invalid" SAME characters have
+    /// been received. SAME/EAS uses ASCII bytes, but not all
+    /// valid ASCII bytes are valid as SAME characters.
+    ///
+    /// This error count helps detect the end of a SAME burst.
+    /// If more than `max_invalid` bytes are received, the
+    /// burst is ended.
     ///
     /// SAME/EAS transmissions are repeated three times, and it
     /// is often necessary to perform parity correction to
-    /// recover a valid message. This makes detecting the end of
-    /// a transmission very difficult.
+    /// recover a valid message. The end-of-burst is difficult
+    /// to detect in noisy conditions. This field balances the
+    /// need to detect end-of-frame with permitting frame errors
+    /// that will (hopefully) be corrected later.
+    ///
+    /// Some NWR transmitters have been observed transmitting
+    /// five or six zero bytes at the end of each burst. This
+    /// behavior is not in the SAME standard, but it does help
+    /// us detect end-of-frame when present.
+    ///
+    /// You should probably set this field to `5` or `6`.
     pub fn with_frame_max_invalid(&mut self, max_invalid: u32) -> &mut Self {
         self.frame_max_invalid_bytes = max_invalid;
         self
