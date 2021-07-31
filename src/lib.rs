@@ -4,4 +4,5 @@
 
 mod demod;
 mod filter;
+mod symsync;
 mod waveform;
