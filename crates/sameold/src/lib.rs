@@ -38,9 +38,12 @@
 //!
 //! # let some_audio_source_iterator = || std::iter::once(0.0f32);
 //! #
-//! // create a SameReceiver with your audio sampling rate
+//! // Create a SameReceiver with your audio sampling rate
+//! // Sound cards typically run at 44100 Hz or 48000 Hz. Use
+//! // an input rate of at least 8000 Hz.
 //! let mut rx = SameReceiverBuilder::new(22050)
 //!     .with_agc_bandwidth(0.05)        // AGC bandwidth at symbol rate, < 1.0
+//!     .with_agc_gain_limits(1.0/(i16::MAX as f32), 1.0/200.0)  // for i16
 //!     .with_squelch_power(0.10, 0.05)  // squelch open/close power, 0.0 < power < 1.0
 //!     .with_preamble_max_errors(2)     // bit error limit when detecting sync sequence
 //!     .build();

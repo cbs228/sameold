@@ -305,7 +305,11 @@ impl From<&SameReceiverBuilder> for SameReceiver {
         let (timing_bandwidth_unlocked, timing_bandwidth_locked) = cfg.timing_bandwidth();
         let (power_open, power_close) = cfg.squelch_power();
 
-        let agc = Agc::new(cfg.agc_bandwidth() * sps / input_rate as f32, 1e6);
+        let agc = Agc::new(
+            cfg.agc_bandwidth() * sps / input_rate as f32,
+            cfg.agc_gain_limits()[0],
+            cfg.agc_gain_limits()[1],
+        );
         let demod = FskDemod::new_from_same(cfg.input_rate());
         let symsync = TimingLoop::new(sps, timing_bandwidth_unlocked, cfg.timing_max_deviation());
         let code_squelch = CodeAndPowerSquelch::new(

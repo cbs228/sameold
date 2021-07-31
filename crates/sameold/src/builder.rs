@@ -17,6 +17,7 @@ use crate::receiver::SameReceiver;
 pub struct SameReceiverBuilder {
     input_rate: u32,
     agc_bandwidth: f32,
+    agc_gain_limits: [f32; 2],
     timing_bandwidth_unlocked: f32,
     timing_bandwidth_locked: f32,
     timing_max_deviation: f32,
@@ -43,6 +44,7 @@ impl SameReceiverBuilder {
         Self {
             input_rate,
             agc_bandwidth: 0.05f32,
+            agc_gain_limits: [0.0, 1.0e6],
             timing_bandwidth_unlocked: 0.125f32,
             timing_bandwidth_locked: 0.05f32,
             timing_max_deviation: 0.01,
@@ -73,6 +75,19 @@ impl SameReceiverBuilder {
     /// significantly faster than one symbol.
     pub fn with_agc_bandwidth(&mut self, bw: f32) -> &mut Self {
         self.agc_bandwidth = f32::clamp(bw, 0.0, 1.0);
+        self
+    }
+
+    /// Automatic gain control gain limits
+    ///
+    /// Set the `min`imum and `max`imum AGC gains. For a fixed-point
+    /// input type like `i16`, you should probably set the minimum
+    /// gain to `1 / i16::MAX` and the maximum to around 30× that.
+    ///
+    /// Correctly limiting the gain range will result in faster
+    /// convergence.
+    pub fn with_agc_gain_limits(&mut self, min: f32, max: f32) -> &mut Self {
+        self.agc_gain_limits = [min, max];
         self
     }
 
@@ -227,6 +242,11 @@ impl SameReceiverBuilder {
     /// AGC bandwidth (fraction of input rate)
     pub fn agc_bandwidth(&self) -> f32 {
         self.agc_bandwidth
+    }
+
+    /// AGC lower and upper gain limit
+    pub fn agc_gain_limits(&self) -> &[f32; 2] {
+        &self.agc_gain_limits
     }
 
     /// Timing loop bandwidth (fraction of baud rate)
