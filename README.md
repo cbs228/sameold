@@ -1,4 +1,4 @@
-[binary](https://crates.io/crates/samedec) | [library](https://crates.io/crates/sameold) | [api docs](https://docs.rs/sameold/latest/chrono/sameold)
+[binary](https://crates.io/crates/samedec) | [library](https://crates.io/crates/sameold) | [api docs](https://docs.rs/sameold/latest/sameold)
 
 # sameold: SAME/EAS Demodulation
 
@@ -64,7 +64,7 @@ sameold = "0.1"
 ```
 
 Then read our
-[API documentation](https://docs.rs/sameold/latest/chrono/sameold).
+[API documentation](https://docs.rs/sameold/latest/sameold).
 
 ## Contributing
 
