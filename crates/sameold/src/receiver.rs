@@ -514,7 +514,7 @@ mod tests {
 
     use crate::waveform::{bytes_to_samples, modulate_afsk};
 
-    const TEST_MESSAGE: &str = "ZCZC-ORG-EEE-012345+0000-0001122-NOCALL00-";
+    const TEST_MESSAGE: &str = "ZCZC-EAS-DMO-372088-091724-919623-645687-745748-175234-039940-955869-091611-304171-931612-334828-179485-569615-809223-830187-611340-014693-472885-084645-977764-466883-406863-390018-701741-058097-752790-311648-820127-255900-581947+0000-0001122-NOCALL00-";
 
     // this method exists to allow us to dump the modulated
     // waveform to a file
@@ -522,7 +522,7 @@ mod tests {
     fn dump_file(out: &[f32], filename: &str) {
         let mut f = std::fs::File::create(filename).expect("Unable to create file");
         for &i in out {
-            f.write_all(&(i).to_ne_bytes())
+            f.write_all(&(i as i16).to_ne_bytes())
                 .expect("Unable to write data");
         }
     }
