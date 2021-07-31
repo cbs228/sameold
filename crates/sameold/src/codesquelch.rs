@@ -250,6 +250,10 @@ impl CodeAndPowerSquelch {
                     );
                     Some(0)
                 }
+                Some(0) => {
+                    // sync is re-affirmed
+                    Some(0)
+                }
                 Some(n) => {
                     debug!(
                         "squelch: adjust byte sync by +{} symbols with {} errors, power {:.3}",
@@ -542,7 +546,14 @@ mod tests {
         let mut ptrack = PowerTracker::new(1.0f32);
         ptrack.track(1.0f32);
         ptrack.bandwidth = 0.5f32;
-        assert_approx_eq!(0.62500f32, ptrack.track(-0.5f32))
+        assert_approx_eq!(0.62500f32, ptrack.track(-0.5f32));
+
+        ptrack.power = 1.0f32;
+        for _i in 0..16 {
+            ptrack.track(1.0f32);
+        }
+        assert_approx_eq!(1.0f32, ptrack.power);
+        assert_approx_eq!(1.0f32, ptrack.track(1.0f32));
     }
 
     #[test]
