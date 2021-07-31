@@ -131,16 +131,17 @@ pub fn bytes_to_symbols(bytes: &[u8]) -> Vec<f32> {
 ///
 /// Converts bytes to SAME samples. +1 is emitted for one bits,
 /// and -1 is emitted for zero bits. The symbols are output in
-/// SAME order (least significant bit first). Two samples are
-/// emitted for every symbol.
+/// SAME order (least significant bit first). `nsps` samples
+/// are emitted for every symbol.
 #[cfg(test)]
-pub fn bytes_to_samples(bytes: &[u8]) -> Vec<f32> {
+pub fn bytes_to_samples(bytes: &[u8], nsps: usize) -> Vec<f32> {
+    let nsps = usize::max(1, nsps);
     let mut v = Vec::with_capacity(bytes.len() * 8 * 2);
     for byte in bytes {
         let mut word = *byte;
         for _i in 0..8 {
             let bit = word & 0x01;
-            v.push(0.0f32);
+            v.extend(std::iter::repeat(0.0f32).take(nsps - 1));
             if bit == 1 {
                 v.push(1.0f32);
             } else {

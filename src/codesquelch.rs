@@ -309,7 +309,7 @@ mod tests {
     #[test]
     fn test_simple_sync() {
         const BYTES: &[u8] = &[0xAB, 0xAB, 0xAB, 0xAB, 0x21];
-        let insamp = bytes_to_samples(BYTES);
+        let insamp = bytes_to_samples(BYTES, 2);
 
         let mut squelch = CodeSquelch::new(crate::waveform::PREAMBLE_SYNC_WORD, 0);
         assert!(!squelch.is_sync());
@@ -337,7 +337,7 @@ mod tests {
     #[test]
     fn test_sync_with_error() {
         const BYTES: &[u8] = &[0xF0, 0x0B, 0xA9, 0xAB, 0xAB, 0xAB, 0x21];
-        let insamp = bytes_to_samples(BYTES);
+        let insamp = bytes_to_samples(BYTES, 2);
 
         let mut squelch = CodeSquelch::new(crate::waveform::PREAMBLE_SYNC_WORD, 1);
         assert!(!squelch.is_sync());
@@ -364,7 +364,7 @@ mod tests {
     #[test]
     fn test_sync_with_lots_of_errors() {
         const BYTES: &[u8] = &[0xAB, 0x0B, 0xA9, 0xAB, 0xAB, 0xAA, 0x21];
-        let insamp = bytes_to_samples(BYTES);
+        let insamp = bytes_to_samples(BYTES, 2);
 
         let mut found_early = false;
         let mut found_later = false;

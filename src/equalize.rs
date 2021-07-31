@@ -521,7 +521,7 @@ mod tests {
 
         // let's see what happens when we train on a set of symbols
         // but receive the exact opposite of it
-        let chansig = bytes_to_samples(&[0x54, 0x54]);
+        let chansig = bytes_to_samples(&[0x54, 0x54], 2);
 
         let _rxsig0: Vec<(bool, f32)> = chansig
             .chunks(2)
@@ -554,7 +554,7 @@ mod tests {
         uut.reset();
         uut.train().expect("training mode err");
 
-        let chansig = bytes_to_samples(&[0xAB, 0xAB, 0xAB, 0xAB]);
+        let chansig = bytes_to_samples(&[0xAB, 0xAB, 0xAB, 0xAB], 2);
         let _rxsig3: Vec<(bool, f32)> = chansig
             .chunks(2)
             .map(|sa| uut.estimate_symbol(sa))
@@ -570,7 +570,7 @@ mod tests {
         const RELAXATION: f32 = 0.10f32;
         const REGULARIZATION: f32 = 1.0e-6f32;
 
-        let chansig = bytes_to_samples(&[0xAB, 0xBA]);
+        let chansig = bytes_to_samples(&[0xAB, 0xBA], 2);
         let mut uut = Equalizer::new(8, 4, 0.2, 1.0e-5, None);
         let out: Vec<(u8, f32)> = chansig.chunks(16).map(|sa| uut.input(sa)).collect();
 
