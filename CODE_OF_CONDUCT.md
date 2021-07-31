@@ -1,6 +1,6 @@
 # CODE OF CONDUCT
 
-*The Microcode*
+*The Microcode*, v1.0.1
 
-Contributors are asked to abstain from any behavior which might motivate us to
-adopt a formal code of conduct.
+Contributors are hereby requested to abstain from any behavior which might
+motivate us to adopt a formal code of conduct.

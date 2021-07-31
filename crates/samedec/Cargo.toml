@@ -8,9 +8,6 @@ homepage = "https://github.com/cbs228/sameold"
 repository = "https://github.com/cbs228/sameold.git"
 readme = "README.md"
 
-[badges]
-maintenance = {status = "experimental"}
-
 [dependencies]
 sameold = {path = "../sameold", version = "0.1.0"}
 chrono = "^0.4"

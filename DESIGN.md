@@ -5,10 +5,11 @@ the `sameold` crate. The top-level receiver is in `receiver.rs`.
 
 ### High-rate processing
 
-An automatic gain control (`agc.rs`) algorithm is used to normalize the input
-power to a fixed amplitude range. This improves the performance of the symbol
-synchronizer, which makes certain assumptions about the power of the signals it
-is receiving.
+A DC blocker (`dcblock.rs`) removes DC bias that may result from analog audio
+connections. An automatic gain control (`agc.rs`) algorithm then normalizes the
+input power to a fixed amplitude range. These pre-processors improve the
+performance of the symbol synchronizer, which makes certain assumptions about
+the signals it is receiving.
 
 ### Demodulation and Downsampling
 

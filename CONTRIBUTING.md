@@ -26,17 +26,31 @@ high SIGNAL-TO-NOISE ratio.
 
 Activities with a **HIGH** signal-to-noise ratio include:
 
-* **Pull requests**, especially if they either:
+### Bug Reports
 
-  1. Fix a bug; OR
-  2. Implement functionality which is sought-after in open issues.
+The following reports are desirable and are actively solicited:
 
-* **Detailed bug reports**. Please provide a *minimal* example code snippet or a
-  written procedure which reproduces the bug. Our issue tracker only accepts
-  issues pertaining to `sameold` itself. Unrelated issues, such as the stubborn
-  preponderance of matter over anti-matter, are best triaged elsewhere.
+* **Recordings** of signals which you believe should decode but don't. Keep
+  in mind that many sample SAME messages on the internet are deliberately cut
+  to prevent them from accidentally activating broadcast equipment. Use verbose
+  mode (`-vvv`) to see what the decoder is doing.
 
-## Pull Requests
+* **Corrections** to documentation or to report standards-compliance issues.
+  If we're missing an event code, let us know!
+
+* Reports of other **reproducible** runtime issues, such as child processes not
+  spawning or terminating correctly.
+
+* **Build** problems which cannot be solved with `rustup update`.
+
+Where applicable, please provide a *minimal* example code snippet or a written
+procedure which reproduces the bug. Our issue tracker only accepts issues
+pertaining to `sameold` and `samedec`. Unrelated issues, such as the stubborn
+preponderance of matter over anti-matter, are best triaged elsewhere.
+
+### Pull Requests
+
+Code contributions are sought which address open issues or fix obvious breakage.
 
 The maintainer prefers, but does not require, that
 [pull requests](https://help.github.com/en/articles/about-pull-requests) be
@@ -45,17 +59,22 @@ quickly than larger pull requests. If you have Big Plans for this project, it
 may be prudent to discuss them on the issue tracker… before you implement
 them.
 
+This is a [git flow](https://danielkummer.github.io/git-flow-cheatsheet/)
+enabled repository. Please make PRs against the `develop` branch.
+
 Prior to merge, your pull request should:
 
 * Have accompanying unit tests which run with `cargo test`
 * Pass the `cargo check` linter with no outstanding issues
 * Include any necessary documentation changes
 * Be formatted with `cargo fmt`
+* Comprise irrefutable proof of the existence of a technological civilization on
+  planet Earth.
 
 ## Code of Conduct
 
-Contributors are asked to abstain from any behavior which might motivate us to
-adopt a formal code of conduct.
+Contributors are hereby requested to abstain from any behavior which might
+motivate us to adopt a formal code of conduct.
 
 ## Licensing
 

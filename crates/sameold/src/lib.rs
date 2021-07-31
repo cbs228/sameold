@@ -45,7 +45,6 @@
 //! use sameold::{FrameOut, Message, SameReceiverBuilder};
 //!
 //! # let some_audio_source_iterator = || std::iter::once(0.0f32);
-//! #
 //! // Create a SameReceiver with your audio sampling rate
 //! // Sound cards typically run at 44100 Hz or 48000 Hz. Use
 //! // an input rate of at least 8000 Hz.
