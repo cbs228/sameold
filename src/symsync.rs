@@ -199,6 +199,15 @@ impl TimingLoop {
         (self.advance_loop(offset, &sym), sym)
     }
 
+    /// Average number of samples between inputs
+    ///
+    /// Returns the *average* period between successive calls
+    /// to [`input()`](#method.input). This is a fractional
+    /// number of samples at the input rate.
+    pub fn samples_per_ted(&self) -> f32 {
+        self.samples_per_ted
+    }
+
     // Advance timing loop
     //
     // `offset` is the difference between the last commanded
