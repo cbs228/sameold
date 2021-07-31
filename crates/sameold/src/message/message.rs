@@ -9,7 +9,8 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use thiserror::Error;
 
-use crate::samecodes::{EventCode, Originator, UnrecognizedEventCode};
+use super::event::{EventCode, UnrecognizedEventCode};
+use super::originator::Originator;
 
 /// A fully-decoded SAME/EAS message
 ///

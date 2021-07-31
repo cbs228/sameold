@@ -184,14 +184,13 @@ mod filter;
 mod framing;
 mod message;
 mod receiver;
-mod samecodes;
 mod symsync;
 mod waveform;
 
 pub use builder::{EqualizerBuilder, SameReceiverBuilder};
 pub use framing::FrameOut;
-pub use message::{InvalidDateErr, Message, MessageDecodeErr, MessageHeader};
-pub use receiver::{SameReceiver, SourceIterFrames};
-pub use samecodes::{
-    EventCode, Originator, SignificanceLevel, UnknownSignificanceLevel, UnrecognizedEventCode,
+pub use message::{
+    EventCode, EventCodeIter, InvalidDateErr, Message, MessageDecodeErr, MessageHeader, Originator,
+    SignificanceLevel, UnknownSignificanceLevel, UnrecognizedEventCode,
 };
+pub use receiver::{SameReceiver, SourceIterFrames};
