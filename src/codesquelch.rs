@@ -269,7 +269,7 @@ mod tests {
 
     #[test]
     fn test_num_bit_errors() {
-        let sync_to = crate::waveform::PREAMBLE;
+        let sync_to = crate::waveform::PREAMBLE_SYNC_WORD;
         let one_error = sync_to | 0x40u32;
         let another_error = 0xa9ababab;
 
@@ -283,7 +283,7 @@ mod tests {
         const BYTES: &[u8] = &[0xAB, 0xAB, 0xAB, 0xAB, 0x21];
         let mut syms = bytes_to_symbols(BYTES);
 
-        let mut uut = CodeCorrelator::new(crate::waveform::PREAMBLE);
+        let mut uut = CodeCorrelator::new(crate::waveform::PREAMBLE_SYNC_WORD);
 
         // correlation reaches minimum error at 32 bits
         let out: Vec<u32> = syms.iter().map(|s| uut.search(*s)).collect();
@@ -311,7 +311,7 @@ mod tests {
         const BYTES: &[u8] = &[0xAB, 0xAB, 0xAB, 0xAB, 0x21];
         let insamp = bytes_to_samples(BYTES);
 
-        let mut squelch = CodeSquelch::new(crate::waveform::PREAMBLE, 0);
+        let mut squelch = CodeSquelch::new(crate::waveform::PREAMBLE_SYNC_WORD, 0);
         assert!(!squelch.is_sync());
 
         for (chunk, inp) in insamp.chunks(2).enumerate() {
@@ -339,7 +339,7 @@ mod tests {
         const BYTES: &[u8] = &[0xF0, 0x0B, 0xA9, 0xAB, 0xAB, 0xAB, 0x21];
         let insamp = bytes_to_samples(BYTES);
 
-        let mut squelch = CodeSquelch::new(crate::waveform::PREAMBLE, 1);
+        let mut squelch = CodeSquelch::new(crate::waveform::PREAMBLE_SYNC_WORD, 1);
         assert!(!squelch.is_sync());
 
         for (chunk, inp) in insamp.chunks(2).enumerate() {
@@ -368,7 +368,7 @@ mod tests {
 
         let mut found_early = false;
         let mut found_later = false;
-        let mut squelch = CodeSquelch::new(crate::waveform::PREAMBLE, 3);
+        let mut squelch = CodeSquelch::new(crate::waveform::PREAMBLE_SYNC_WORD, 3);
         assert!(!squelch.is_sync());
 
         for (chunk, inp) in insamp.chunks(2).enumerate() {

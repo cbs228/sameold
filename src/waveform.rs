@@ -11,12 +11,19 @@ pub const FSK_SPACE_HZ: f32 = 1562.5;
 /// Baud rate (Hz)
 pub const BAUD_HZ: f32 = 520.83;
 
-/// SAME preamble byte
+/// Preamble byte
+///
+/// The preamble byte is repeated sixteen times before every
+/// SAME message. It contains many bit transitions to ensure
+/// that bit and byte synchronization is acquired quickly
+pub const PREAMBLE: u8 = 0xab;
+
+/// SAME preamble sync sequence
 ///
 /// The preamble byte is repeated sixteen times before every
 /// SAME message. Here, we will use four occurrences of it
 /// for synchronization.
-pub const PREAMBLE: u32 = 0xabababab;
+pub const PREAMBLE_SYNC_WORD: u32 = u32::from_be_bytes([PREAMBLE, PREAMBLE, PREAMBLE, PREAMBLE]);
 
 /// SAME baud rate at the given sampling frequency, in fractional samples
 pub fn samples_per_symbol(fs: u32) -> f32 {

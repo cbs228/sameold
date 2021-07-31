@@ -512,11 +512,11 @@ mod tests {
         const RELAXATION: f32 = 0.10f32;
         const REGULARIZATION: f32 = 1.0e-6f32;
 
-        let mut uut = Equalizer::new(8, 4, 0.2, 1.0e-5, Some(crate::waveform::PREAMBLE));
+        let mut uut = Equalizer::new(8, 4, 0.2, 1.0e-5, Some(crate::waveform::PREAMBLE_SYNC_WORD));
         uut.train().expect("training mode");
         assert_eq!(
             uut.mode,
-            EqualizerState::EnabledTraining(crate::waveform::PREAMBLE, 0)
+            EqualizerState::EnabledTraining(crate::waveform::PREAMBLE_SYNC_WORD, 0)
         );
 
         // let's see what happens when we train on a set of symbols
