@@ -19,7 +19,7 @@
 //! [FilterCoeff](struct.FilterCoeff.html) implements only (1). To
 //! use, let the input window be a slice like
 //!
-//! ```
+//! ```txt
 //! // the sample L is the youngest sample, and O is the oldest
 //! // [ O | N | M | L ]
 //! ```
@@ -34,7 +34,7 @@
 //!
 //! Then shift the slice like this,
 //!
-//! ```
+//! ```txt
 //! // the sample K is now the youngest sample
 //! // [ N | M | L | K ]
 //! ```
