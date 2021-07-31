@@ -3,8 +3,11 @@
 use std::convert::TryFrom;
 use std::fmt;
 
+#[cfg(feature = "chrono")]
+use chrono::{DateTime, Datelike, Duration, TimeZone, Utc};
 use lazy_static::lazy_static;
 use regex::Regex;
+use thiserror::Error;
 
 use crate::samecodes::{EventCode, Originator, UnrecognizedEventCode};
 
@@ -99,6 +102,11 @@ impl Message {
         }
     }
 }
+
+/// An invalid issuance time
+#[derive(Error, Clone, Debug, PartialEq, Eq, Hash)]
+#[error("message issuance time not valid for its receive time")]
+pub struct InvalidDateErr {}
 
 /// Event, area, time, and originator information
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -291,11 +299,17 @@ impl MessageHeader {
         locations.split('-')
     }
 
-    /// Message validity duration (as string)
+    /// Message validity duration (Duration)
     ///
-    /// Returns the message validity duration or "purge time."
-    /// This is a four-character string of "`HHMM`" representing
-    /// a duration in hours and minutes.
+    /// Returns the message validity duration. The message is
+    /// valid until
+    ///
+    /// ```ignore
+    /// msg.issue_datetime().unwrap() + msg.valid_duration()
+    /// ```
+    ///
+    /// After this time elapses, the message is no longer valid
+    /// and should not be relayed or alerted to anymore.
     ///
     /// This field represents the validity time of the *message*
     /// and not the expected duration of the severe condition.
@@ -303,13 +317,14 @@ impl MessageHeader {
     /// (And might be the subject of future messages.)
     ///
     /// The valid duration is relative to the
-    /// [`issue_daytime()`](#method.issue_daytime).
+    /// [`issue_datetime()`](#method.issue_datetime) and *not* the
+    /// current time.
     ///
-    /// The returned string is guaranteed to be a four-digit
-    /// number.
-    pub fn valid_duration_str(&self) -> &str {
-        &self.message[self.offset_time + Self::OFFSET_FROMPLUS_VALIDTIME
-            ..self.offset_time + Self::OFFSET_FROMPLUS_VALIDTIME + 4]
+    /// Requires `chrono`.
+    #[cfg(feature = "chrono")]
+    pub fn valid_duration(&self) -> Duration {
+        let (hrs, mins) = self.valid_duration_fields();
+        Duration::hours(hrs as i64) + Duration::minutes(mins as i64)
     }
 
     /// Message validity duration
@@ -323,38 +338,71 @@ impl MessageHeader {
     /// (And might be the subject of future messages.)
     ///
     /// The valid duration is relative to the
-    /// [`issue_daytime()`](#method.issue_daytime).
-    pub fn valid_duration(&self) -> (u8, u8) {
-        let dur_str = self.valid_duration_str();
+    /// [`issue_daytime_fields()`](#method.issue_daytime_fields).
+    pub fn valid_duration_fields(&self) -> (u8, u8) {
+        let dur_str = &self.message[self.offset_time + Self::OFFSET_FROMPLUS_VALIDTIME
+            ..self.offset_time + Self::OFFSET_FROMPLUS_VALIDTIME + 4];
         (
             dur_str[0..2].parse().expect(Self::PANIC_MSG),
             dur_str[2..4].parse().expect(Self::PANIC_MSG),
         )
     }
 
-    /// Mesage issuance day/time (string)
+    /// Estimated message issuance datetime (UTC)
     ///
-    /// Returns the message issue day and time, as the string
-    /// `JJJHHMM`,
+    /// Computes the datetime that the SAME message was *issued*
+    /// from the time that the message was `received`, which
+    /// must be provided.
     ///
-    /// - `JJJ`: Ordinal day of the year. `001` represents 1 Jan.,
-    ///   and `365` represents 31 Dec. in non leap-years. During
-    ///   leap years, `366` represents 31 Dec. `000` is not used.
-    ///   It is up to the receiving station to have some notion
-    ///   of what the current year is and to detect calendar
-    ///   rollovers.
+    /// SAME headers do not include the year of issuance. This makes
+    /// it impossible to calculate the full datetime of issuance
+    /// without a rough idea of the message's true UTC time. It is
+    /// *unnecessary* for the `received` time to be a precision
+    /// timestamp. As long as the provided value is within ±90 days
+    /// of true UTC, the output time will be correct.
     ///
-    /// - `HHMM`: UTC time of day, using a 24-hour time scale.
-    ///   Times are UTC and are **NOT** local times.
+    /// An error is returned if we are unable to calculate
+    /// a valid timestamp. This can happen, for example, if we
+    /// project a message sent on Julian/Ordinal Day 366 into a
+    /// year that is not a leap year.
     ///
-    /// The string format is guaranteed at the return, but the
-    /// represented date is not guaranteed to be valid.
-    pub fn issue_daytime_str(&self) -> &str {
-        &self.message[self.offset_time + Self::OFFSET_FROMPLUS_ISSUETIME
-            ..self.offset_time + Self::OFFSET_FROMPLUS_ISSUETIME + 7]
+    /// The returned datetime is always in one minute increments
+    /// with the seconds field set to zero.
+    ///
+    /// Requires `chrono`.
+    #[cfg(feature = "chrono")]
+    pub fn issue_datetime(
+        &self,
+        received: &DateTime<Utc>,
+    ) -> Result<DateTime<Utc>, InvalidDateErr> {
+        calculate_issue_time(
+            self.issue_daytime_fields(),
+            (received.year(), received.ordinal()),
+        )
     }
 
-    /// Mesage issuance day/time (string)
+    /// Is the message expired?
+    ///
+    /// Given the current time, determine if this message has
+    /// expired. It is assumed that `now` is within twelve
+    /// hours of the message issuance time. Twelve hours is
+    /// the maximum [`duration`](#method.valid_duration) of a
+    /// SAME message.
+    ///
+    /// An expired message may still refer to an *ongoing hazard*
+    /// or event! Expiration merely indicates that the message
+    /// should not be relayed or alerted to anymore.
+    ///
+    /// Requires `chrono`.
+    #[cfg(feature = "chrono")]
+    pub fn is_expired_at(&self, now: &DateTime<Utc>) -> bool {
+        match self.issue_datetime(now) {
+            Ok(issue_ts) => issue_ts + self.valid_duration() < *now,
+            Err(_e) => false,
+        }
+    }
+
+    /// Mesage issuance day/time (fields)
     ///
     /// Returns the message issue day and time, as the string
     /// `JJJHHMM`,
@@ -368,8 +416,9 @@ impl MessageHeader {
     ///
     /// - `HHMM`: UTC time of day, using a 24-hour time scale.
     ///   Times are UTC and are **NOT** local times.
-    pub fn issue_daytime(&self) -> (u16, u8, u8) {
-        let issue = self.issue_daytime_str();
+    pub fn issue_daytime_fields(&self) -> (u16, u8, u8) {
+        let issue = &self.message[self.offset_time + Self::OFFSET_FROMPLUS_ISSUETIME
+            ..self.offset_time + Self::OFFSET_FROMPLUS_ISSUETIME + 7];
         (
             issue[0..3].parse().expect(Self::PANIC_MSG),
             issue[3..5].parse().expect(Self::PANIC_MSG),
@@ -582,6 +631,44 @@ fn last_ascii_character<'a>(s: &'a str) -> Option<&'a str> {
     }
 }
 
+// Calculate message issuance time
+//
+// Calculate Utc datetime of message issuance from the
+// fields encoded into the `message` and a local estimate
+// of when the message was `received`.
+#[cfg(feature = "chrono")]
+fn calculate_issue_time(
+    message: (u16, u8, u8),
+    received: (i32, u32),
+) -> Result<DateTime<Utc>, InvalidDateErr> {
+    let (day_of_year, hour, minute) = message;
+    let (rx_year, rx_day_of_year) = received;
+
+    let daydiff = rx_day_of_year as i32 - day_of_year as i32;
+    let msg_year = if daydiff >= 180 {
+        // message is over 180 days from now, which is unlikely
+        // what is more likely is that the UTC new year has
+        // arrived and this message is from next year
+        rx_year.saturating_add(1)
+    } else if daydiff <= -180 {
+        // message is over 180 days old, which is unlikely
+        // what is more likely is that we have received
+        // a message from last UTC year
+        rx_year.saturating_sub(1)
+    } else {
+        // message was received in the current year
+        rx_year
+    };
+
+    // construct a calendar date
+    Ok(Utc
+        .yo_opt(msg_year, day_of_year as u32)
+        .single()
+        .ok_or(InvalidDateErr {})?
+        .and_hms_opt(hour as u32, minute as u32, 0)
+        .ok_or(InvalidDateErr {})?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -608,8 +695,44 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "chrono")]
+    fn test_calculate_issue_time() {
+        let d = calculate_issue_time((83, 2, 53), (2021, 1)).unwrap();
+        assert_eq!(d, Utc.ymd(2021, 3, 24).and_hms(2, 53, 0));
+
+        let d = calculate_issue_time((84, 23, 59), (2021, 1)).unwrap();
+        assert_eq!(d, Utc.ymd(2021, 3, 25).and_hms(23, 59, 0));
+
+        // close to the current year
+        let d = calculate_issue_time((1, 10, 00), (2021, 1)).unwrap();
+        assert_eq!(d, Utc.ymd(2021, 1, 1).and_hms(10, 00, 0));
+
+        // bumps to next year
+        let d = calculate_issue_time((1, 10, 00), (2021, 200)).unwrap();
+        assert_eq!(d, Utc.ymd(2022, 1, 1).and_hms(10, 00, 0));
+
+        // this too
+        let d = calculate_issue_time((1, 10, 00), (2021, 365)).unwrap();
+        assert_eq!(d, Utc.ymd(2022, 1, 1).and_hms(10, 00, 0));
+
+        // reverts to previous year, with leap year support
+        let d = calculate_issue_time((366, 10, 00), (2021, 1)).unwrap();
+        assert_eq!(d, Utc.ymd(2020, 12, 31).and_hms(10, 00, 0));
+
+        // but this doesn't work at all if the year we propagate into
+        // is not a leap year
+        calculate_issue_time((366, 10, 00), (1971, 364)).expect_err("should not succeed");
+
+        // and ordinal day 0 is totally invalid
+        calculate_issue_time((0, 10, 00), (1971, 364)).expect_err("should not succeed");
+
+        // hours invalid
+        calculate_issue_time((84, 25, 59), (2021, 84)).expect_err("should not succeed");
+    }
+
+    #[test]
     fn test_message_header() {
-        const THREE_LOCATIONS: &str = "ZCZC-WXR-EEE-012345-567890-888990+0351-3661122-NOCALL00-@@@";
+        const THREE_LOCATIONS: &str = "ZCZC-WXR-RWT-012345-567890-888990+0351-3662322-NOCALL00-@@@";
 
         let mut errs = vec![0u8; THREE_LOCATIONS.len()];
         errs[0] = 1u8;
@@ -621,21 +744,38 @@ mod tests {
 
         assert_eq!(msg.originator_str(), "WXR");
         assert_eq!(Originator::WeatherService, msg.originator());
-        assert_eq!(msg.event_str(), "EEE");
-        assert_eq!(msg.valid_duration_str(), "0351");
-        assert_eq!(msg.valid_duration(), (3, 51));
-        assert_eq!(msg.issue_daytime_str(), "3661122");
-        assert_eq!(msg.issue_daytime(), (366, 11, 22));
+        assert_eq!(msg.event_str(), "RWT");
+        assert_eq!(msg.event().unwrap(), EventCode::RequiredWeeklyTest);
+        assert_eq!(msg.valid_duration_fields(), (3, 51));
+        assert_eq!(msg.issue_daytime_fields(), (366, 23, 22));
         assert_eq!(msg.callsign(), "NOCALL00");
         assert_eq!(msg.parity_error_count(), 6);
 
         let loc: Vec<&str> = msg.location_str_iter().collect();
         assert_eq!(loc.as_slice(), &["012345", "567890", "888990"]);
 
+        // time API checks
+        #[cfg(feature = "chrono")]
+        {
+            assert_eq!(
+                Utc.ymd(2020, 12, 31).and_hms(23, 22, 00),
+                msg.issue_datetime(&Utc.ymd(2020, 12, 31).and_hms(11, 30, 34))
+                    .unwrap()
+            );
+            assert_eq!(
+                msg.valid_duration(),
+                Duration::hours(3) + Duration::minutes(51)
+            );
+            assert!(!msg.is_expired_at(&Utc.ymd(2020, 12, 31).and_hms(23, 59, 0)));
+            assert!(!msg.is_expired_at(&Utc.ymd(2021, 1, 1).and_hms(1, 20, 30)));
+            assert!(!msg.is_expired_at(&Utc.ymd(2021, 1, 1).and_hms(3, 13, 00)));
+            assert!(msg.is_expired_at(&Utc.ymd(2021, 1, 1).and_hms(3, 13, 01)));
+        }
+
         // try again via Message
         let msg = Message::try_from(THREE_LOCATIONS.to_owned()).expect("bad msg");
         match &msg {
-            Message::StartOfMessage(m) => assert_eq!(m.issue_daytime(), (366, 11, 22)),
+            Message::StartOfMessage(m) => assert_eq!(m.issue_daytime_fields(), (366, 23, 22)),
             _ => unreachable!(),
         }
         assert_eq!(&THREE_LOCATIONS[0..56], &format!("{}", msg));
