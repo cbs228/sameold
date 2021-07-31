@@ -72,10 +72,6 @@ pub enum MessageDecodeErr {
     #[error("invalid SAME header: message contains non-ASCII characters")]
     NotAscii,
 
-    /// Header is shorter than the minimum length for a valid message
-    #[error("invalid SAME header: decoded message too short")]
-    TooShort,
-
     /// Header does not match general format
     #[error("invalid SAME header: message text does not match required pattern")]
     Malformed,
@@ -579,10 +575,6 @@ fn check_header(hdr: &str) -> Result<(usize, usize), MessageDecodeErr> {
                 .expect("bad SAME regexp");
     }
 
-    if hdr.len() < 42 {
-        return Err(MessageDecodeErr::TooShort);
-    }
-
     let mtc = RE
         .captures(hdr)
         .ok_or(MessageDecodeErr::Malformed)?
@@ -640,7 +632,10 @@ mod tests {
         const VALID_ONE: &str = "ZCZC-ORG-EEE-012345+0000-0001122-NOCALL00-";
         const VALID_TWO: &str = "ZCZC-ORG-EEE-012345-567890+0000-0001122-NOCALL00-garbage";
 
-        assert_eq!(Err(MessageDecodeErr::TooShort), check_header(INVALID_SHORT));
+        assert_eq!(
+            Err(MessageDecodeErr::Malformed),
+            check_header(INVALID_SHORT)
+        );
 
         assert_eq!(Ok((19, 42)), check_header(VALID_ONE));
         assert_eq!(VALID_ONE.as_bytes()[19], '+' as u8);
