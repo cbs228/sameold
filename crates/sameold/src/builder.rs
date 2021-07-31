@@ -51,7 +51,7 @@ impl SameReceiverBuilder {
         Self {
             input_rate,
             dc_blocker_len: 0.38,
-            agc_bandwidth: 0.05f32,
+            agc_bandwidth: 0.01f32,
             agc_gain_limits: [0.0, 1.0e6],
             timing_bandwidth_unlocked: 0.125f32,
             timing_bandwidth_locked: 0.05f32,
