@@ -30,10 +30,10 @@
 use crate::filter::{FilterCoeff, Window};
 
 #[cfg(not(test))]
-use log::{debug, trace};
+use log::debug;
 
 #[cfg(test)]
-use std::{println as debug, println as trace};
+use std::println as debug;
 
 /// No training sequence defined; can't enter training mode
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -178,13 +178,6 @@ impl Equalizer {
             last_err = err;
             byte |= (bit as u8) << bitind;
         }
-
-        trace!(
-            "equalizer: byte: {:#04x} \"{:?}\", err: {:.4}",
-            byte,
-            byte as char,
-            last_err
-        );
 
         (byte, last_err)
     }

@@ -4,11 +4,7 @@
 use log::{info, trace, warn};
 
 #[cfg(test)]
-use std::println as trace;
-#[cfg(test)]
-use std::println as info;
-#[cfg(test)]
-use std::println as warn;
+use std::{println as trace, println as info, println as warn};
 
 use std::convert::From;
 use std::iter::{IntoIterator, Iterator};
@@ -319,8 +315,17 @@ impl SameReceiver {
             }
         };
 
-        // // 4. adaptive equalization
-        let (byte_est, _) = self.equalizer.input(&squelch_out.samples);
+        // 4. adaptive equalization
+        let (byte_est, adaptive_err) = self.equalizer.input(&squelch_out.samples);
+
+        trace!(
+            "byte: {:#04x} \"{:?}\", sym err: {:0.2}, sym pwr: {:0.2}, adapt err: {:0.2}",
+            byte_est,
+            byte_est as char,
+            bit_samples.err,
+            squelch_out.power,
+            adaptive_err
+        );
 
         // 5. framing
         Some(
