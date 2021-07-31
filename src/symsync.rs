@@ -132,21 +132,22 @@ impl TimingLoop {
     ///
     /// Creates a new timing loop which expects `samples_per_symbol`
     /// *input* samples per symbol, on average, with a maximum clock
-    /// deviation of `max_deviation` input samples.
+    /// deviation of `max_deviation` symbol periods.
     ///
     /// The tracking loop smooths error estimates with a proportional
     /// integrate (PI) filter. The bandwidth of this filter is
     /// `loop_bandwidth`, which is expressed as a fraction of the
     /// timing error detector's input rate.
     pub fn new(samples_per_symbol: f32, loop_bandwidth: f32, max_deviation: f32) -> Self {
-        let need_sps = ZeroCrossingTed::SAMPLES_PER_SYMBOL as f32;
+        const NEED_SPS: f32 = ZeroCrossingTed::SAMPLES_PER_SYMBOL as f32;
 
         let (loop_alpha, loop_beta) = compute_loop_alphabeta(loop_bandwidth);
-        let period_min = (samples_per_symbol - max_deviation.abs()) / need_sps;
-        let period_max = (samples_per_symbol + max_deviation.abs()) / need_sps;
-        let samples_per_ted = samples_per_symbol / need_sps;
+        let samples_per_ted = samples_per_symbol / NEED_SPS;
+        let period_deviation = samples_per_symbol * f32::clamp(max_deviation, 0.0, 0.5);
         let period_avg = samples_per_ted;
         let period_inst = samples_per_ted;
+        let period_min = period_avg - period_deviation;
+        let period_max = period_avg + period_deviation;
 
         Self {
             samples_per_ted,
@@ -400,8 +401,9 @@ mod tests {
 
     #[test]
     fn test_timing_loop_advance() {
-        let mut timing = TimingLoop::new(32.0f32, 0.25, 4.0f32);
+        let mut timing = TimingLoop::new(32.0f32, 0.25, 0.125f32);
         assert_approx_eq!(timing.period_inst, 16.0f32);
+        assert_approx_eq!(timing.period_max, 16.0f32 + 4.0f32);
         assert_approx_eq!(timing.advance_loop(0.0f32, &None), 16.0f32);
         assert_approx_eq!(timing.advance_loop(0.5f32, &None), 16.5f32);
         assert_approx_eq!(timing.advance_loop(-0.5f32, &None), 16.0f32);
@@ -491,7 +493,7 @@ mod tests {
         assert_approx_eq!(1.0f32, inp[16]);
         assert_approx_eq!(-1.0f32, inp[48]);
 
-        let mut timing = TimingLoop::new(SAMPLES_PER_SYMBOL as f32, 0.25, 4.0f32);
+        let mut timing = TimingLoop::new(SAMPLES_PER_SYMBOL as f32, 0.25, 0.125f32);
 
         // test best-case timing error: we are synchronized to start with
         // note: SAME preamble is 16 × 8 bits long
@@ -506,7 +508,7 @@ mod tests {
 
         let inp = gen_sinusoid(2 * SAMPLES_PER_SYMBOL);
 
-        let mut timing = TimingLoop::new(SAMPLES_PER_SYMBOL as f32, 0.25, 4.0f32);
+        let mut timing = TimingLoop::new(SAMPLES_PER_SYMBOL as f32, 0.25, 0.125f32);
 
         // test *near* worse-case timing error: we are off by almost
         // a half-sample to start with
@@ -521,7 +523,7 @@ mod tests {
 
         let inp = gen_sinusoid(2 * SAMPLES_PER_SYMBOL);
 
-        let mut timing = TimingLoop::new(SAMPLES_PER_SYMBOL as f32, 0.25, 4.0f32);
+        let mut timing = TimingLoop::new(SAMPLES_PER_SYMBOL as f32, 0.25, 0.125f32);
 
         // test worst-case timing error, where we are off by
         // half a sample
@@ -537,13 +539,13 @@ mod tests {
         let inp = gen_sinusoid(2 * SAMPLES_PER_SYMBOL);
 
         // turn down the bandwidth. do we still make it?
-        let mut timing = TimingLoop::new(SAMPLES_PER_SYMBOL as f32, 0.20, 4.0f32);
+        let mut timing = TimingLoop::new(SAMPLES_PER_SYMBOL as f32, 0.20, 0.125f32);
         let last_sym = timing_test(&mut timing, &inp, 16, false);
         assert!(last_sym.sym().abs() > 0.99);
         assert!(last_sym.err < 1e-4);
 
         // if we're already nearly synchronized, will a lower bandwidth suffice?
-        let mut timing = TimingLoop::new(SAMPLES_PER_SYMBOL as f32, 0.05, 4.0f32);
+        let mut timing = TimingLoop::new(SAMPLES_PER_SYMBOL as f32, 0.05, 0.125f32);
         let last_sym = timing_test(&mut timing, &inp, 3, false);
         assert!(last_sym.sym().abs() > 0.99);
         assert!(last_sym.err < 1e-4);
