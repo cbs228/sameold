@@ -6,10 +6,12 @@ use arraydeque::ArrayDeque;
 use arrayvec::ArrayVec;
 
 #[cfg(not(test))]
-use log::info;
+use log::{info, warn};
 
 #[cfg(test)]
 use std::println as info;
+#[cfg(test)]
+use std::println as warn;
 
 use crate::message::{Message, MessageDecodeErr};
 
@@ -381,11 +383,17 @@ fn try_recover_message(bursts: &mut MessageTriple) -> Result<Message, MessageDec
         // if we get a valid message, clear the bursts buffer to
         // prevent later messages from being conflated with
         // this one
-        let out = Message::try_from((msg.to_owned(), errs.as_slice()))?;
-        info!("message ({} errors): \"{}\"", out.parity_error_count(), out);
         bursts.clear();
-
-        Ok(out)
+        match Message::try_from((msg.to_owned(), errs.as_slice())) {
+            Ok(out) => {
+                info!("message ({} errors): \"{}\"", out.parity_error_count(), out);
+                Ok(out)
+            }
+            Err(e) => {
+                warn!("decode failure ({}): \"{}\"", e, msg);
+                Err(e)
+            }
+        }
     } else {
         // the above will fail if the message contains non utf-8
         Err(MessageDecodeErr::NotAscii)
@@ -402,7 +410,7 @@ fn try_recover_message(bursts: &mut MessageTriple) -> Result<Message, MessageDec
 fn correct_errors<'b, 'o, B, S>(
     mut burst_iter: B,
     out: &'o mut Burst,
-    err_counts: &'o mut Burst,
+    err_counts: &'_ mut Burst,
 ) -> Option<&'o str>
 where
     B: ExactSizeIterator<Item = &'b S>,
