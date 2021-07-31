@@ -30,7 +30,7 @@ use regex::Regex;
 ///   Encoding (SAME)," NWSI 10-172, 3 Oct. 2011,
 ///   <https://www.nws.noaa.gov/directives/sym/pd01017012curr.pdf>
 ///
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Message {
     /// Indicates start of audio message
     ///
@@ -54,7 +54,7 @@ pub enum Message {
 }
 
 /// Error decoding a `MessageHeader`
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum MessageDecodeErr {
     /// The starting prefix of the message was not recognized
     UnrecognizedPrefix,
@@ -80,7 +80,7 @@ impl Message {
 }
 
 /// Event, area, time, and originator information
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MessageHeader {
     // message content, including the leading `ZCZC-`
     message: String,
