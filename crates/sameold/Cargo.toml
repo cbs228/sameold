@@ -1,0 +1,29 @@
+[package]
+name = "sameold"
+description = "A SAME/EAS digital receiver library"
+version = "0.1.0"
+authors = ["Colin S <3526918+cbs228@users.noreply.github.com>"]
+license = "MIT OR Apache-2.0"
+edition = "2018"
+homepage = "https://github.com/cbs228/sameold"
+repository = "https://github.com/cbs228/sameold.git"
+readme = "README.md"
+
+[dependencies]
+arrayvec = "^0.7.1"
+arraydeque = "^0.4.5"
+assert_approx_eq = "1.1.0"
+chrono = { version = "^0.4", default-features = true, optional = true }
+lazy_static = "^1.4.0"
+log = "0.4"
+nalgebra = "^0.26.1"
+num-complex = "^0.3.1"
+num-traits = "^0.2"
+regex = "^1.5.4"
+slice-deque = "^0.3.0"
+strum = "^0.21"
+strum_macros = "^0.21"
+thiserror = "^1.0"
+
+[features]
+default = ["chrono"]

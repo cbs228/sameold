@@ -1,0 +1,195 @@
+//! # sameold: SAME/EAS Demodulation
+//!
+//! *Over-the-air weather alerts for your desktop or RPi.*
+//!
+//! This crate provides a digital demodulator and decoder for
+//! [Specific Area Message Encoding](https://en.wikipedia.org/wiki/Specific_Area_Message_Encoding)
+//! (SAME). It can detect the presence of SAME messages in an audio signal
+//! and report them to the caller.
+//!
+//! ## Disclaimer
+//!
+//! This crate is dual-licensed MIT and Apache 2.0. Read these licenses
+//! carefully as they may affect your rights.
+//!
+//! This crate has not been certified as a weather radio receiver or for any
+//! other purpose. The author **strongly discourages** its use in any
+//! safety-critical applications. Always have at least two methods available
+//! for receiving weather alerts.
+//!
+//! ## Example
+//!
+//! A complete example may be found in our
+//! [`samedec`](https://crates.io/crates/samedec) crate, which provides a
+//! command-line program for decoding SAME via pipes.
+//!
+//! ### Demodulation and Decoding
+//!
+//! You will first need to recover *baseband audio* from a radio or
+//! television station which broadcasts SAME signals. Obtain the
+//! audio signal that you would normally listen to. You can use
+//! either
+//!
+//! * an audio "line out" jack from a radio, scanner, or other
+//!   receiver; OR
+//! * a software-defined radio
+//!
+//! In either case, obtaining the audio is beyond the scope of this
+//! crate. To sample your soundcard, try
+//! [cpal](https://crates.io/crates/cpal). If you have a stereo
+//! signal, mix to mono first. If you are demodulating wideband FM,
+//! and your demodulator offers you a choice, choose mono-only
+//! demodulation.
+//!
+//! ```
+//! use sameold::{FrameOut, Message, SameReceiverBuilder};
+//!
+//! # let some_audio_source_iterator = || std::iter::once(0.0f32);
+//! // Create a SameReceiver with your audio sampling rate
+//! // Sound cards typically run at 44100 Hz or 48000 Hz. Use
+//! // an input rate of at least 8000 Hz.
+//! let mut rx = SameReceiverBuilder::new(22050)
+//!     .with_agc_bandwidth(0.05)        // AGC bandwidth at symbol rate, < 1.0
+//!     .with_agc_gain_limits(1.0/(i16::MAX as f32), 1.0/200.0)  // for i16
+//!     .with_squelch_power(0.10, 0.05)  // squelch open/close power, 0.0 < power < 1.0
+//!     .with_preamble_max_errors(2)     // bit error limit when detecting sync sequence
+//!     .build();
+//!
+//! // let audiosrc be an iterator which outputs audio samples,
+//! // such as a BufReader bound to stdin or a file, in f32
+//! // format at the sampling rate (here 22050 Hz)
+//! let audiosrc = some_audio_source_iterator();
+//! for msg in rx.iter_messages(audiosrc) {
+//!     match msg {
+//!         Message::StartOfMessage(hdr) => {
+//!             println!("begin SAME voice message: {}", hdr);
+//!         }
+//!         Message::EndOfMessage => {
+//!             println!("end SAME voice message");
+//!         }
+//!     }
+//! }
+//! ```
+//!
+//! The digital receiver is created via a
+//! [builder](crate::SameReceiverBuilder).
+//!
+//! The [`SameReceiver`](crate::SameReceiver) binds by iterator to any
+//! source of `f32` PCM mono (1-channel) audio samples. If you're using `i16`
+//! samples (as most sound cards do), you'll need to cast them to `f32`.
+//! There is no need to scale them as long as you configure the
+//! AGC properly, as above.
+//!
+//! The iterator consumes as many samples as possible until the next
+//! [`Message`] is decoded.
+//!
+//! You can use the [`iter_frames()`](SameReceiver::iter_frames)
+//! method instead to obtain more information about what the demodulator is
+//! doing, including errors framing messages.
+//!
+//! ### Interpreting Messages
+//!
+//! The [`Message`] type marks the start or end of a SAME message. The
+//! actual "message" part of a SAME message is the audio itself, which
+//! should contain a voice message that
+//!
+//! * describes the event; and
+//! * provides instructions to the listener.
+//!
+//! This crate decodes the digital headers which summarize the message.
+//! An example header, as received "off the wire" in ASCII format, is:
+//!
+//! ```txt
+//! ZCZC-WXR-RWT-012345-567890-888990+0015-0321115-KLOX/NWS-
+//! ```
+//!
+//! If this was the header string received, then you could decode
+//! `hdr` from the previous example as follows:
+//!
+//! ```
+//! # use sameold::{MessageHeader};
+//! use sameold::{EventCode, Originator, SignificanceLevel};
+//! # let hdr = MessageHeader::new(
+//! #     "ZCZC-WXR-RWT-012345-567890-888990+0015-0321115-KLOX/NWS-"
+//! # ).expect("fail to parse");
+//!
+//! // what organization originated the message?
+//! assert_eq!(Originator::NationalWeatherService, hdr.originator());
+//!
+//! // event code
+//! // in actual implementations, handle this error gracefully!
+//! let evt = hdr.event().expect("unknown event code");
+//! assert_eq!(EventCode::RequiredWeeklyTest, evt);
+//!
+//! // events have a "significance level" which describes how
+//! // urgent or actual they are
+//! assert_eq!(SignificanceLevel::Test, evt.to_significance_level());
+//! assert!(SignificanceLevel::Test < SignificanceLevel::Warning);
+//!
+//! // location codes are accessed by iterator
+//! let first_location = hdr.location_str_iter().next();
+//! assert_eq!(Some("012345"), first_location);
+//! ```
+//!
+//! ## Background
+//!
+//! SAME is commonly used to distribute weather alerts in the United States and
+//! Canada. It was originally developed for use with broadcast stations that
+//! carry analog audio signals, such as:
+//!
+//! * [NOAA Weather Radio](https://www.weather.gov/nwr/)
+//! * Commercial FM radio broadcast stations
+//! * Commercial television broadcast and cable networks
+//!
+//! These stations participate in an emergency alerting network known as the
+//! [Emergency Alert System](https://en.wikipedia.org/wiki/Emergency_Alert_System),
+//! which disseminates alerts to the general public.
+//!
+//! SAME messages are transmitted in place of the station's normal programming
+//! as an audio-only message. SAME messages include a digital header which
+//! separates them from the station's normal programming. The digital header is
+//! also sent in-band—encoded with an analog modulation to preserve it. SAME
+//! headers are modulated using two-level frequency-shift keying (FSK) and sent
+//! at a baud rate of 520.83 Hz.
+//!
+//! ## Crate features
+//!
+//! * `chrono`: Use chrono to calculate message
+//!   [issuance times](crate::MessageHeader#method.issue_datetime)
+//!   and other fields as true UTC timestamps. If enabled, `chrono`
+//!   becomes part of this crate's public API.
+//!
+//! ## Contributing
+//!
+//! If you have a **recording** of a signal that you think should demodulate, but
+//! doesn't, please open an new issue on
+//! [github](https://github.com/cbs228/sameold). Either attach or link to your
+//! recording.
+//!
+//! Please read our
+//! [contributing guidelines](https://github.com/cbs228/sameold/blob/master/CONTRIBUTING.md)
+//! before opening any issues or PRs.
+
+#![deny(unsafe_code)]
+#![warn(missing_docs)]
+
+mod agc;
+mod builder;
+mod codesquelch;
+mod dcblock;
+mod demod;
+mod equalize;
+mod filter;
+mod framing;
+mod message;
+mod receiver;
+mod symsync;
+mod waveform;
+
+pub use builder::{EqualizerBuilder, SameReceiverBuilder};
+pub use framing::FrameOut;
+pub use message::{
+    EventCode, EventCodeIter, InvalidDateErr, Message, MessageDecodeErr, MessageHeader, Originator,
+    SignificanceLevel, UnknownSignificanceLevel, UnrecognizedEventCode,
+};
+pub use receiver::{SameReceiver, SourceIterFrames};
