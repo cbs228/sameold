@@ -149,7 +149,7 @@ impl CodeSquelch {
             }
         }
 
-        if sync && self.sample_clock.is_none() {}
+        let sync = sync && !self.sync_lock;
 
         match self.sample_clock {
             Some(0) => {
@@ -375,7 +375,6 @@ mod tests {
             let lock = squelch.input(inp);
             match lock {
                 Some((outsamp, _is_sync)) => {
-                    println!("found at chunk {}", chunk);
                     if chunk == 47 {
                         let outsamp: Vec<f32> = outsamp.collect();
                         assert_eq!(&outsamp, &insamp[32..64 + 32]);
