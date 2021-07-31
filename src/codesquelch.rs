@@ -8,11 +8,13 @@
 //! detect the start of transmission and also to align
 //! the system to byte boundaries.
 //!
-//! The [CodeSquelch](struct.CodeSquelch.html) extends
-//! this by buffering symbols and looking for the sync
-//! pattern. When sync is found, samples are emitted.
-//! The `CodeSquelch` cannot detect loss of sync and
-//! must be manually reset.
+//! The [CodeAndPowerSquelch](struct.CodeAndPowerSquelch.html)
+//! extends this by buffering symbols and looking for
+//! the sync pattern. When sync is found, samples are
+//! emitted. The `CodeAndPowerSquelch` also enforces a
+//! minimum signal power.
+
+use std::default::Default;
 
 use arraydeque::ArrayDeque;
 
@@ -22,13 +24,78 @@ use log::info;
 #[cfg(test)]
 use std::println as info;
 
-/// Access code squelch
+/// Squelch state
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SquelchState {
+    /// Reading data
+    ///
+    /// No state change. The squelch is synchronized and reading
+    /// data.
+    Reading,
+
+    /// Acquired symbol synchronization
+    ///
+    /// The synchronization has been acquired and/or adjusted.
+    Acquired,
+
+    /// Dropped symbol synchronization
+    ///
+    /// No further [`SquelchOut`](struct.SquelchOut.html) will
+    /// be output until sync is acquired.
+    Dropped,
+}
+
+/// Squelch output
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SquelchOut {
+    /// Synchronized data samples
+    ///
+    /// Synchronized samples at *twice* the symbol rate. The array
+    /// is aligned to data byte boundaries and contains exactly
+    /// one byte of symbols (16 samples).
+    ///
+    /// ```txt
+    /// [0.0, 1.0, 0.0, … … … , 0.0, -1.0]
+    ///       |                       |
+    ///       |                       + most recent symbol
+    ///       |
+    ///       + least recent symbol
+    /// ```
+    ///
+    /// The most recent symbols are to the right of the array.
+    pub samples: [f32; CodeAndPowerSquelch::OUTPUT_LENGTH],
+
+    /// Lifetime total symbols received
+    ///
+    /// Counts the lifetime total number of symbols *received*
+    /// by the `CodeAndPowerSquelch`. This is *not* the same as
+    /// the number of symbols emitted by the squelch. This field
+    /// is useful as a measure of time.
+    pub symbol_counter: u64,
+
+    /// Symbol power estimate
+    ///
+    /// A smoothed estimate of the symbol power, in linear power
+    /// power (amplitude-squared) units. This value is the power
+    /// estimate as of the last symbol in `samples`.
+    pub power: f32,
+
+    /// Reports squelch state
+    ///
+    /// If the sync has been acquired or adjusted, reports
+    /// `SquelchState::Acquired`. If the sync is dropped and
+    /// this is the last output, reports `SquelchState::Dropped`.
+    pub state: SquelchState,
+}
+
+/// Access code and power squelch
 ///
 /// This squelch method suppresses all output samples
-/// until a synchronization symbol pattern is detected.
-/// The detector makes hard binary decisions and
-/// requires a match against the sync word to within a
-/// specified maximum number of bit errors.
+/// until a synchronization symbol pattern is detected
+/// at a specified minimum power level. The detector
+/// makes hard binary decisions and requires a match
+/// against the sync word to within a specified maximum
+/// number of bit errors.
 ///
 /// This block requires that symbols be transmitted
 /// least-significant bit (LSb) first.
@@ -53,19 +120,34 @@ use std::println as info;
 /// is available. This is, conveniently, one byte's worth
 /// of samples.
 ///
-/// This block can only *acquire* the synchronization… it
-/// cannot *drop* it. To drop sync, higher-level logic
-/// must call [`reset()`](#method.reset).
+/// This block will drop sync ("close the squelch") if the
+/// received power level drops below the low-water mark. You
+/// may also drop sync with the [`end()`](#method.end) method.
 #[derive(Clone, Debug)]
-pub struct CodeSquelch {
+pub struct CodeAndPowerSquelch {
     // maximum number of bit errors
     max_errors: u32,
+
+    // power required to open the squelch (linear amplitude^2)
+    power_open: f32,
+
+    // power required to keep the squelch open (linear amplitude^2)
+    power_close: f32,
 
     // correlator
     correlator: CodeCorrelator,
 
+    // power tracker
+    power_track: PowerTracker,
+
     // sample history
-    history: ArrayDeque<[f32; 64], arraydeque::Wrapping>,
+    sample_history: ArrayDeque<[f32; 64], arraydeque::Wrapping>,
+
+    // power threshold history
+    power_history: ArrayDeque<[bool; 32], arraydeque::Wrapping>,
+
+    // lifetime total count of symbols received
+    symbol_counter: u64,
 
     // time since samples were emitted
     sample_clock: Option<u8>,
@@ -74,7 +156,7 @@ pub struct CodeSquelch {
     sync_lock: bool,
 }
 
-impl CodeSquelch {
+impl CodeAndPowerSquelch {
     /// Input length, in samples
     pub const INPUT_LENGTH: usize = 2;
 
@@ -89,11 +171,36 @@ impl CodeSquelch {
     /// of your synchronization code. Many synchronization waveforms
     /// have ambiguities at nearby bit shifts, and it is important
     /// not to admit these.
-    pub fn new(sync_to: u32, max_errors: u32) -> Self {
+    ///
+    /// The `CodeAndPowerSquelch` also tracks the power level of the
+    /// demodulated symbols and can enforce a minimum power level.
+    /// Power is estimated as the square of the symbol values. (It is
+    /// expected that the input to the demodulator is normalized with
+    /// an AGC.) The symbol power must reach at least `power_open` to
+    /// open the squelch, and the squelch will close if the power falls
+    /// below `power_close`. Set these values to zero to disable the
+    /// power detector and use the code only. In general, we recommend
+    /// `power_open` >= `power_close`.
+    ///
+    /// The power estimates are smoothed with a single-pole IIR filter
+    /// of bandwidth `power_track_bandwidth`, which is expressed as a
+    /// fraction of the symbol rate.
+    pub fn new(
+        sync_to: u32,
+        max_errors: u32,
+        power_open: f32,
+        power_close: f32,
+        power_track_bandwidth: f32,
+    ) -> Self {
         let mut out = Self {
             max_errors,
+            power_open,
+            power_close: f32::min(power_close, power_open),
             correlator: CodeCorrelator::new(sync_to),
-            history: ArrayDeque::default(),
+            power_track: PowerTracker::new(power_track_bandwidth),
+            sample_history: ArrayDeque::default(),
+            power_history: ArrayDeque::default(),
+            symbol_counter: 0,
             sample_clock: None,
             sync_lock: false,
         };
@@ -112,62 +219,85 @@ impl CodeSquelch {
     ///
     /// If the output is `None`, the sync has not yet been found.
     ///
-    /// If `Some`, the output is a tuple of `(samples, sync)`,
-    /// where `samples` is an array of 16 samples (8 symbols).
-    ///
-    /// The `sync` flag is set to true if the first symbol in the
-    /// output array is the first sample of the `sync_to` sync word.
-    /// The `sync` output may be used to put an equalizer into
-    /// training mode against the sync word.
+    /// If the output is `Some`, the sync has been acquired.
+    /// Synchronized samples are output in
+    /// [`SquelchOut`](struct.SquelchOut.html).
     ///
     /// This method may panic if `input` does not contain
     /// exactly two samples (and will panic in debug mode).
-    pub fn input(&mut self, input: &[f32]) -> Option<([f32; Self::OUTPUT_LENGTH], bool)> {
+    pub fn input(&mut self, input: &[f32]) -> Option<SquelchOut> {
         // append to history and correlator
         assert_eq!(Self::INPUT_LENGTH, input.len());
-        self.history.push_back(input[0]);
-        self.history.push_back(input[1]);
+        self.sample_history.push_back(input[0]);
+        self.sample_history.push_back(input[1]);
         let err = self.correlator.search(input[1]);
+        let pwr = self.power_track.track(input[1]);
+        self.power_history.push_back(pwr >= self.power_close);
+        self.symbol_counter += 1;
 
-        if !self.history.is_full() {
+        if !self.sample_history.is_full() {
             // wait for buffer to fill
             return None;
         }
 
-        // we find the sync if we are allowed to and the
-        // err count is low enough
-        let new_sync = !self.sync_lock && err <= self.max_errors;
-        if new_sync {
+        let new_sync = !self.sync_lock && err <= self.max_errors && pwr >= self.power_open;
+
+        let report_state = if new_sync {
             self.sample_clock = match self.sample_clock {
                 None => {
-                    info!("acquired byte synchronization with {} errors", err);
+                    info!(
+                        "squelch: acquired byte sync: {} errors, power {:.3}",
+                        err, pwr
+                    );
                     Some(0)
                 }
                 Some(n) => {
                     info!(
-                        "adjust byte synchronization by +{} symbols with {} errors",
+                        "squelch: adjust byte sync by +{} symbols with {} errors, power {:.3}",
                         8 - n,
-                        err
+                        err,
+                        pwr
                     );
                     Some(0)
                 }
-            }
-        }
+            };
+            SquelchState::Acquired
+        } else if self.is_sync() && !self.power_history.front().expect("bad power history") {
+            info!(
+                "squelch: lost sync: symbol power {:.3} below threshold",
+                pwr
+            );
+            self.end();
+
+            let mut out = SquelchOut::default();
+            out.symbol_counter = self.symbol_counter;
+            out.power = pwr;
+            out.state = SquelchState::Dropped;
+
+            return Some(out);
+        } else {
+            SquelchState::Reading
+        };
 
         // if the output clock is byte-aligned, output the last
         // byte's worth of samples
         match self.sample_clock {
             None => None,
             Some(0) => {
-                let mut out = [0.0f32; Self::OUTPUT_LENGTH];
+                self.sample_clock = Some(1);
+
+                let mut out = SquelchOut::default();
                 for (o, h) in out
+                    .samples
                     .iter_mut()
-                    .zip(self.history.iter().take(Self::OUTPUT_LENGTH))
+                    .zip(self.sample_history.iter().take(Self::OUTPUT_LENGTH))
                 {
                     *o = *h;
                 }
-                self.sample_clock = Some(1);
-                Some((out, new_sync))
+                out.symbol_counter = self.symbol_counter;
+                out.power = pwr;
+                out.state = report_state;
+                Some(out)
             }
             Some(ref mut clk) => {
                 *clk = (*clk + 1) % 8;
@@ -180,20 +310,46 @@ impl CodeSquelch {
     ///
     /// If `lock` is true, prevent the synchronization from
     /// changing once it is acquired. This setting is cleared
-    /// on a [`reset()`](#method.reset).
+    /// on a call to [`end()`](#method.end).
     pub fn lock(&mut self, lock: bool) {
         self.sync_lock = lock;
     }
 
     /// Reset to zero initial conditions
     ///
-    /// The sync is dropped and must be re-acquired before
-    /// additional data bytes can be output.
+    /// If all you want to do is drop synchronization, you
+    /// probably want to use the
+    /// [`end()`](#method.end) instead.
     pub fn reset(&mut self) {
+        self.end();
         self.correlator.reset();
-        self.history.clear();
-        self.sample_clock = None;
+        self.sample_history.clear();
+        self.power_track.reset();
+        self.power_history.clear();
+        self.symbol_counter = 0;
+    }
+
+    /// Drop synchronization, inhibiting further output
+    ///
+    /// Signals the `CodeAndPowerSquelch` that the frame or
+    /// byte synchronization has been lost. The squelch is
+    /// immediately closed and the sync is dropped.
+    /// [`input()`](#method.input) will produce no further
+    /// outputs until synchronization is reacquired.
+    pub fn end(&mut self) {
         self.sync_lock = false;
+        self.sample_clock = None;
+    }
+
+    /// Lifetime count of received symbols
+    ///
+    /// Reports a total count of all *symbols* received since
+    /// the last [`reset()`](#method.reset). This value is in
+    /// symbols and not in samples. All received samples are
+    /// counted, including those which are suppressed by the
+    /// squelch mechanism.
+    pub fn symbol_count(&self) -> u64 {
+        self.symbol_counter
     }
 
     /// Is the squelch synchronized?
@@ -213,6 +369,12 @@ impl CodeSquelch {
     /// resynchronize once sync is acquired.
     pub fn is_locked(&self) -> bool {
         self.sync_lock
+    }
+}
+
+impl Default for SquelchState {
+    fn default() -> SquelchState {
+        SquelchState::Reading
     }
 }
 
@@ -270,9 +432,55 @@ fn num_bit_errors(sync_to: u32, data: u32) -> u32 {
     err.count_ones()
 }
 
+// Tracks received signal power
+//
+// The power tracker tracks the power level (in linear
+// amplitude^2 units) of the received symbols. The power
+// estimate is smoothed by a single-pole IIR filter with
+// a specified `bandwidth`.
+#[derive(Clone, Debug)]
+struct PowerTracker {
+    bandwidth: f32,
+    power: f32,
+}
+
+impl PowerTracker {
+    /// New power tracker
+    ///
+    /// The tracker smooths its estimates with the given
+    /// `bandwidth`, which is specified by as a fraction
+    /// of the baud rate.
+    pub fn new(bandwidth: f32) -> Self {
+        Self {
+            bandwidth: f32::clamp(bandwidth, 0.0f32, 1.0f32),
+            power: 0.0f32,
+        }
+    }
+
+    /// Reset to zero initial conditions
+    pub fn reset(&mut self) {
+        self.power = 0.0f32;
+    }
+
+    /// Track power
+    ///
+    /// Accepts a soft symbol estimate in `sym` and calculates
+    /// a smoothed power estimate. The power estimate is output
+    /// in units of amplitude^2.
+    #[inline]
+    pub fn track(&mut self, sym: f32) -> f32 {
+        let pwr = sym * sym;
+        self.power += (pwr - self.power) * self.bandwidth;
+        self.power = self.power.max(0.0f32);
+        self.power
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use assert_approx_eq::assert_approx_eq;
 
     use crate::waveform::{bytes_to_samples, bytes_to_symbols};
 
@@ -316,28 +524,39 @@ mod tests {
     }
 
     #[test]
+    fn test_power_tracker() {
+        let mut ptrack = PowerTracker::new(1.0f32);
+        ptrack.track(1.0f32);
+        ptrack.bandwidth = 0.5f32;
+        assert_approx_eq!(0.62500f32, ptrack.track(-0.5f32))
+    }
+
+    #[test]
     fn test_simple_sync() {
         const BYTES: &[u8] = &[0xAB, 0xAB, 0xAB, 0xAB, 0x21];
         let insamp = bytes_to_samples(BYTES, 2);
 
-        let mut squelch = CodeSquelch::new(crate::waveform::PREAMBLE_SYNC_WORD, 0);
+        let mut squelch =
+            CodeAndPowerSquelch::new(crate::waveform::PREAMBLE_SYNC_WORD, 0, 0.0, 0.0, 0.1);
         assert!(!squelch.is_sync());
 
         let mut align_idx = 0; // sync sequence begins at 0 samples in insamp
         for (chunk, inp) in insamp.chunks(2).enumerate() {
             let lock = squelch.input(inp);
             match lock {
-                Some((outsamp, is_sync)) => {
+                Some(out) => {
                     // only get one sync pulse
-                    if is_sync {
+                    if out.state == SquelchState::Acquired {
                         assert_eq!(chunk, 31);
                         assert_eq!(squelch.correlator.data, 0xabababab);
                     }
-                    assert!(!is_sync || chunk == 31);
+                    assert!(out.state != SquelchState::Acquired || chunk == 31);
 
                     // outsamp is aligned with insamp
-                    assert_eq!(&outsamp, &insamp[align_idx..align_idx + 16]);
+                    assert_eq!(&out.samples, &insamp[align_idx..align_idx + 16]);
                     align_idx += 16;
+
+                    assert_eq!(out.symbol_counter - 1, chunk as u64);
                 }
                 _ => {}
             }
@@ -345,7 +564,7 @@ mod tests {
 
         assert!(squelch.is_sync());
         assert_eq!(align_idx, 32);
-        squelch.reset();
+        squelch.end();
         assert!(!squelch.is_sync());
     }
 
@@ -354,16 +573,17 @@ mod tests {
         const BYTES: &[u8] = &[0xF0, 0x0B, 0xA9, 0xAB, 0xAB, 0xAB, 0x21];
         let insamp = bytes_to_samples(BYTES, 2);
 
-        let mut squelch = CodeSquelch::new(crate::waveform::PREAMBLE_SYNC_WORD, 1);
+        let mut squelch =
+            CodeAndPowerSquelch::new(crate::waveform::PREAMBLE_SYNC_WORD, 1, 0.0, 0.0, 0.1);
         assert!(!squelch.is_sync());
 
         let mut align_idx = 32; // sync sequence begins at 32 samples in insamp
         for (chunk, inp) in insamp.chunks(2).enumerate() {
             let lock = squelch.input(inp);
             match lock {
-                Some((outsamp, is_sync)) => {
-                    assert!(!is_sync || 47 == chunk);
-                    assert_eq!(&outsamp, &insamp[align_idx..align_idx + 16]);
+                Some(out) => {
+                    assert!(out.state != SquelchState::Acquired || 47 == chunk);
+                    assert_eq!(&out.samples, &insamp[align_idx..align_idx + 16]);
                     align_idx += 16;
                 }
                 _ => {}
@@ -381,21 +601,21 @@ mod tests {
 
         let mut found_early = false;
         let mut found_later = false;
-        let mut squelch = CodeSquelch::new(crate::waveform::PREAMBLE_SYNC_WORD, 3);
+        let mut squelch =
+            CodeAndPowerSquelch::new(crate::waveform::PREAMBLE_SYNC_WORD, 3, 0.0, 0.0, 0.1);
         assert!(!squelch.is_sync());
 
         let mut align_idx = 32; // sync sequence begins at 32 samples in insamp
         for (chunk, inp) in insamp.chunks(2).enumerate() {
             let lock = squelch.input(inp);
             match lock {
-                Some((outsamp, _is_sync)) => {
+                Some(out) => {
                     if chunk == 47 {
-                        assert_eq!(&outsamp, &insamp[align_idx..align_idx + 16]);
+                        assert_eq!(&out.samples, &insamp[align_idx..align_idx + 16]);
                         align_idx += 16;
                         found_later = true;
                     } else {
                         found_early = true;
-                        std::mem::drop(outsamp);
                     }
                 }
                 _ => {}
@@ -405,5 +625,30 @@ mod tests {
         assert!(squelch.is_sync());
         assert!(found_later);
         assert!(found_early);
+    }
+
+    #[test]
+    fn test_power_detection() {
+        const BYTES: &[u8] = &[0xF0, 0x0B, 0xA9, 0xAB, 0xAB, 0xAB, 0x21];
+        let insamp = bytes_to_samples(BYTES, 2);
+
+        // we open the squelch
+        let mut squelch =
+            CodeAndPowerSquelch::new(crate::waveform::PREAMBLE_SYNC_WORD, 1, 0.9, 0.5, 0.1);
+        for inp in insamp.chunks(2) {
+            let _ = squelch.input(inp);
+        }
+        assert!(squelch.is_sync());
+
+        // now append a bunch of zeroes and watch it close
+        let mut last = SquelchOut::default();
+        for _i in 0..40 {
+            if let Some(out) = squelch.input(&[0.0f32, 0.0f32]) {
+                last = out;
+            }
+        }
+
+        assert!(!squelch.is_sync());
+        assert!(last.state == SquelchState::Dropped);
     }
 }

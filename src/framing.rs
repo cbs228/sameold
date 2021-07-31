@@ -50,6 +50,9 @@ pub struct Framer {
     // framer state
     state: State,
 
+    // lifetime symbol count at last burst end()
+    symbol_count_last_burst: u64,
+
     // how closely must the received data match the message prefix sequences?
     max_prefix_bit_errors: u32,
 
@@ -128,6 +131,7 @@ impl Framer {
         Self {
             bursts: MessageTriple::new(),
             state: State::Idle,
+            symbol_count_last_burst: 0,
             max_prefix_bit_errors,
             max_invalid_bytes,
         }
@@ -137,15 +141,21 @@ impl Framer {
     pub fn reset(&mut self) {
         self.bursts.clear();
         self.state = State::Idle;
+        self.symbol_count_last_burst = 0;
     }
 
     /// Handle received data byte
     ///
     /// Accepts a single `data` byte from the synchronization
-    /// chain and attempts to frame a message. Whenever the
-    /// preamble sequence is detected and has been synchronized
-    /// to, the caller must set the `restart` flag to `true`.
-    /// This indicates that a new SAME data burst has begun.
+    /// chain and attempts to frame a message. The
+    /// `symbol_count` should be set to the lifetime count of
+    /// symbols received by the
+    /// [`CodeAndPowerSquelch`](struct.CodeAndPowerSquelch.html).
+    ///
+    /// Whenever the preamble sequence is detected and has been
+    /// synchronized to, the caller must set the `restart` flag
+    /// to `true`. This indicates that a new SAME data burst
+    /// has begun.
     ///
     /// Once started with `restart,` the Framer will read data
     /// until any of the following:
@@ -158,15 +168,22 @@ impl Framer {
     ///
     /// See [`FrameOut`](enum.FrameOut.html) for a description
     /// of the output.
-    pub fn input(&mut self, data: u8, restart: bool) -> FrameOut {
+    pub fn input(&mut self, data: u8, symbol_count: u64, restart: bool) -> FrameOut {
         if restart {
+            if symbol_count > self.symbol_count_last_burst + MAX_INTERBURST_GAP_SYMBOLS
+                && !self.bursts.is_empty()
+            {
+                info!("burst: inter-burst time exceeded; discarding saved bursts");
+                self.bursts.clear();
+            }
+
             // End the current frame, if we're building one. We will
             // emit an answer if one is Ready.
-            let out = self.end();
+            let out = self.end(symbol_count);
 
             info!("burst: searching: framer restarted");
             self.state = State::PrefixSearch(0, 0);
-            let _ = self.input(data, false);
+            let _ = self.input(data, symbol_count, false);
             match out {
                 FrameOut::Ready(_) => return out,
                 _ => return FrameOut::Searching,
@@ -210,7 +227,7 @@ impl Framer {
                 *invalid_byte_count += !is_allowed_byte(data) as u32;
                 if *invalid_byte_count > self.max_invalid_bytes || msg.try_push(data).is_err() {
                     // we're done!
-                    self.end()
+                    self.end(symbol_count)
                 } else {
                     // keep reading
                     FrameOut::Reading
@@ -228,15 +245,20 @@ impl Framer {
     /// Framer will then attempt to assemble the previous three
     /// bursts into a complete message.
     ///
+    /// Set `symbol_count` to the lifetime count of symbols
+    /// received by the
+    /// [`CodeAndPowerSquelch`](struct.CodeAndPowerSquelch.html).
+    ///
     /// See [`FrameOut`](enum.FrameOut.html) for a description
     /// of the output.
-    pub fn end(&mut self) -> FrameOut {
+    pub fn end(&mut self, symbol_count: u64) -> FrameOut {
         // if we're reading a frame, that frame is done
         match self.state {
             State::DataRead(ref mut msg, _) => {
                 info!("burst: ended: after {} bytes", msg.len());
 
                 // add to our list of completed bursts
+                self.symbol_count_last_burst = symbol_count;
                 fill_remaining(msg, 0);
                 self.bursts
                     .push_back(msg.take().into_inner().expect(Self::PANIC_EXPECT_FULL));
@@ -247,13 +269,11 @@ impl Framer {
                     // got three bursts; try to frame them
                     FrameOut::Ready(try_recover_message(&mut self.bursts))
                 } else {
-                    info!("burst: no carrier");
                     FrameOut::NoCarrier
                 }
             }
             _ => {
                 self.state = State::Idle;
-                info!("burst: no carrier");
                 FrameOut::NoCarrier
             }
         }
@@ -313,6 +333,12 @@ impl std::fmt::Display for FrameOut {
 // truncated.
 const MAX_MESSAGE_LENGTH: usize = 268;
 
+// Maximum time between bursts, in symbols
+//
+// Maximum number of symbols between the end of one burst and
+// the start of the next.
+const MAX_INTERBURST_GAP_SYMBOLS: u64 = (1.5 * crate::waveform::BAUD_HZ) as u64;
+
 // SAME data burst
 //
 // Contains bytes from one of three (hopefully identical)
@@ -351,13 +377,13 @@ enum State {
 fn try_recover_message(bursts: &mut MessageTriple) -> Result<Message, MessageDecodeErr> {
     let mut out = Burst::new();
     if let Some((msg, errs)) = correct_errors(bursts.iter(), &mut out) {
-        debug!("frame ({} errors): \"{}\"", msg, errs);
+        debug!("frame ({} errors): \"{}\"", errs, msg);
 
         // if we get a valid message, clear the bursts buffer to
         // prevent later messages from being conflated with
         // this one
         let out = Message::try_from((msg.to_owned(), errs))?;
-        info!("message ({} errors): \"{}\"", out, errs);
+        info!("message ({} errors): \"{}\"", errs, out);
         bursts.clear();
 
         Ok(out)
@@ -565,7 +591,7 @@ mod tests {
         // we give up if too many preamble bytes are received
         let mut gave_up = false;
         for i in 0..32 {
-            match framer.input(crate::waveform::PREAMBLE, i == 0) {
+            match framer.input(crate::waveform::PREAMBLE, 0, i == 0) {
                 FrameOut::NoCarrier => {
                     assert!(i >= Framer::PREFIX_SEARCH_LEN);
                     gave_up = true;
@@ -577,11 +603,11 @@ mod tests {
         assert!(gave_up);
 
         // we enter Reading mode after we get the prefix
-        framer.input(crate::waveform::PREAMBLE, true);
-        framer.input(crate::waveform::PREAMBLE, true);
+        framer.input(crate::waveform::PREAMBLE, 0, true);
+        framer.input(crate::waveform::PREAMBLE, 0, true);
         let mut last = FrameOut::NoCarrier;
         for d in DATA {
-            last = framer.input(*d, false);
+            last = framer.input(*d, 0, false);
             assert!(last.is_active());
         }
         assert_eq!(last, FrameOut::Reading);
@@ -594,7 +620,7 @@ mod tests {
         }
 
         // force it to end
-        assert_eq!(FrameOut::NoCarrier, framer.end());
+        assert_eq!(FrameOut::NoCarrier, framer.end(0));
         assert_eq!(framer.bursts.len(), 1);
     }
 
@@ -606,12 +632,12 @@ mod tests {
         let mut framer = Framer::new(1, 10);
 
         for i in 0..MAX_LEN_THREE {
-            let out = framer.input('N' as u8, i == 0);
+            let out = framer.input('N' as u8, 0, i == 0);
             if i > 0 && i % MAX_MESSAGE_LENGTH == 0 {
                 // expect carrier drop because buffer is full
                 // restart it
                 assert_eq!(out, FrameOut::NoCarrier);
-                framer.input('N' as u8, true);
+                framer.input('N' as u8, 0, true);
                 continue;
             }
             match i {
@@ -631,16 +657,16 @@ mod tests {
         let mut framer = Framer::new(2, PERMIT_INVALID);
         for i in 0..3 {
             // preamble turns the framer on
-            framer.input(crate::waveform::PREAMBLE, true);
+            framer.input(crate::waveform::PREAMBLE, 0, true);
 
             // we read the data
             for c in MESSAGE.as_bytes() {
-                assert!(framer.input(*c, false).is_active());
+                assert!(framer.input(*c, 0, false).is_active());
             }
 
             // and provide some preambles until we error out
             for j in 0..PERMIT_INVALID + 1 {
-                let out = framer.input(crate::waveform::PREAMBLE, false);
+                let out = framer.input(crate::waveform::PREAMBLE, 0, false);
                 if j >= PERMIT_INVALID {
                     if i < 2 {
                         // enough invalid chars to make us drop
@@ -666,5 +692,36 @@ mod tests {
 
         assert_eq!(framer.bursts.len(), 0);
         assert!(found);
+    }
+
+    #[test]
+    fn test_framer_message_timeout() {
+        // If we exceed the maximum inter-burst time, discard the buffer
+        // and start over
+        const MESSAGE: &str = "ZCZC-ORG-EEE-012345-567890+0000-0001122-NOCALL00-";
+
+        let mut framer = Framer::new(2, 10);
+        for _i in 0..2 {
+            // preamble turns the framer on
+            framer.input(crate::waveform::PREAMBLE, 0, true);
+
+            // we read the data
+            for c in MESSAGE.as_bytes() {
+                assert!(framer.input(*c, 0, false).is_active());
+            }
+
+            // manually end
+            let _ = framer.end(0);
+        }
+
+        assert_eq!(2, framer.bursts.len());
+
+        // if it has been too long, we clear the old buffers
+        framer.input(
+            crate::waveform::PREAMBLE,
+            MAX_INTERBURST_GAP_SYMBOLS + 1,
+            true,
+        );
+        assert_eq!(0, framer.bursts.len());
     }
 }
