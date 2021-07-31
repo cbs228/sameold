@@ -4,6 +4,7 @@
 
 mod codesquelch;
 mod demod;
+mod equalize;
 mod filter;
 mod symsync;
 mod waveform;
