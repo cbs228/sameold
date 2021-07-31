@@ -46,6 +46,10 @@ use crate::symsync::TimingLoop;
 /// assert_eq!(receiver.input_rate(), 22050);
 /// ```
 ///
+/// Once created, use the
+/// [`iter_messages()`](SameReceiver::iter_messages)
+/// method to obtain decoded messages.
+///
 /// See [module documentation](index.html) for details.
 #[derive(Clone, Debug)]
 pub struct SameReceiver {
@@ -66,7 +70,7 @@ pub struct SameReceiver {
 }
 
 impl SameReceiver {
-    /// Receive SAME messages from a source of audio
+    /// Decode events and messages from a source of audio
     ///
     /// Bind an iterator which will consume the `input` and
     /// produce SAME [`FrameOut`] events, which include:
@@ -76,7 +80,7 @@ impl SameReceiver {
     /// * successful framed messages
     ///
     /// The `input` must be f32 PCM mono audio at
-    /// the [`input_rate()`](#method.input_rate) for this
+    /// the [`input_rate()`](SameReceiver::input_rate) for this
     /// receiver. Sound cards commonly output audio samples
     /// in `i16` format. You must perform the conversion to
     /// floating-point yourself, if needed. It is unnecessary
@@ -87,16 +91,54 @@ impl SameReceiver {
     /// that are required to produce the next event. It will
     /// return `None` if the input is exhausted and there
     /// are no new events.
+    ///
+    /// You can use [`iter_messages()`](SameReceiver::iter_messages)
+    /// instead if you are only interested in successful
+    /// decodes.
     #[must_use = "iterators are lazy and do nothing unless consumed"]
-    pub fn iter<'rx, I, T>(&'rx mut self, input: I) -> SourceIter<'rx, T>
+    pub fn iter_frames<'rx, I, T>(&'rx mut self, input: I) -> SourceIterFrames<'rx, T>
     where
         I: IntoIterator<Item = f32> + IntoIterator<IntoIter = T>,
         T: Iterator<Item = f32>,
     {
-        SourceIter {
+        SourceIterFrames {
             source: input.into_iter(),
             receiver: self,
         }
+    }
+
+    /// Receive SAME messages from a source of audio
+    ///
+    /// Bind an iterator which will consume the `input` and
+    /// produce SAME [`Message`] events. Only
+    /// successfully-decoded messages are reported. Other
+    /// events, such as acquisition of signal or decoding
+    /// failures, are not reported. If you are interested in
+    /// these events, use
+    /// [`iter_frames()`](SameReceiver::iter_frames) instead.
+    ///
+    /// The `input` must be f32 PCM mono audio at
+    /// the [`input_rate()`](SameReceiver::input_rate) for this
+    /// receiver. Sound cards commonly output audio samples
+    /// in `i16` format. You must perform the conversion to
+    /// floating-point yourself, if needed. It is unnecessary
+    /// to scale the converted values; our AGC algorithm will
+    /// take care of that.
+    ///
+    /// The iterator will consume as many samples of `input`
+    /// that are required to produce the next message. It will
+    /// return `None` if the input is exhausted and there
+    /// are no new messages.
+    #[must_use = "iterators are lazy and do nothing unless consumed"]
+    pub fn iter_messages<'rx, I, T>(&'rx mut self, input: I) -> SourceIterMsg<'rx, T>
+    where
+        I: IntoIterator<Item = f32> + IntoIterator<IntoIter = T>,
+        T: Iterator<Item = f32>,
+    {
+        SourceIterMsg(SourceIterFrames {
+            source: input.into_iter(),
+            receiver: self,
+        })
     }
 
     /// Input sampling rate
@@ -153,7 +195,7 @@ impl SameReceiver {
             .zip(0..self.input_rate * 2)
             .map(|(sa, _)| sa);
         let mut out = None;
-        for evt in self.iter(two_seconds_of_zeros) {
+        for evt in self.iter_frames(two_seconds_of_zeros) {
             match evt {
                 FrameOut::Ready(Ok(msg)) => out = Some(msg),
                 _ => {}
@@ -374,7 +416,7 @@ impl From<&SameReceiverBuilder> for SameReceiver {
 /// available samples have been consumed without any
 /// new events.
 #[derive(Debug)]
-pub struct SourceIter<'rx, I>
+pub struct SourceIterFrames<'rx, I>
 where
     I: Iterator<Item = f32>,
 {
@@ -382,7 +424,7 @@ where
     receiver: &'rx mut SameReceiver,
 }
 
-impl<'rx, 'data, I> Iterator for SourceIter<'rx, I>
+impl<'rx, 'data, I> Iterator for SourceIterFrames<'rx, I>
 where
     I: Iterator<Item = f32>,
 {
@@ -398,6 +440,47 @@ where
                         out
                     );
                     return Some(out);
+                }
+                _ => continue,
+            }
+        }
+
+        None
+    }
+}
+
+/// Sample source iterator (messages only)
+///
+/// This iterator is bound to a source of mono f32 PCM
+/// audio samples. Calling the `next()` method will
+/// return the next [`Message`] from the SAME Receiver
+/// or `None` if the available samples have been
+/// consumed without any new events.
+///
+/// This iterator returns successful message decodes
+/// only. If you want more events, see
+/// [`SourceIter`].
+#[derive(Debug)]
+pub struct SourceIterMsg<'rx, I>(SourceIterFrames<'rx, I>)
+where
+    I: Iterator<Item = f32>;
+
+impl<'rx, 'data, I> Iterator for SourceIterMsg<'rx, I>
+where
+    I: Iterator<Item = f32>,
+{
+    type Item = Message;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        for sa in &mut self.0.source {
+            match self.0.receiver.process_high_rate(sa) {
+                Some(FrameOut::Ready(Ok(msg))) => {
+                    info!(
+                        "receiver [{:<14}]: {:?}",
+                        self.0.receiver.input_sample_counter(),
+                        msg
+                    );
+                    return Some(msg);
                 }
                 _ => continue,
             }
@@ -479,7 +562,7 @@ mod tests {
         println!("{:?}", rx);
 
         let mut out: Option<crate::Message> = None;
-        for evt in rx.iter(afsk.iter().map(|sa| *sa)) {
+        for evt in rx.iter_frames(afsk.iter().map(|sa| *sa)) {
             if let FrameOut::Ready(Ok(msg)) = evt {
                 out = Some(msg);
             }

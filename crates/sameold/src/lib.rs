@@ -23,6 +23,8 @@
 //! [`samedec`](https://crates.io/crates/samedec) crate, which provides a
 //! command-line program for decoding SAME via pipes.
 //!
+//! ### Demodulation and Decoding
+//!
 //! You will first need to recover *baseband audio* from a radio or
 //! television station which broadcasts SAME signals. Obtain the
 //! audio signal that you would normally listen to. You can use
@@ -58,15 +60,14 @@
 //! // such as a BufReader bound to stdin or a file, in f32
 //! // format at the sampling rate (here 22050 Hz)
 //! let audiosrc = some_audio_source_iterator();
-//! for evt in rx.iter(audiosrc) {
-//!     match evt {
-//!         FrameOut::Ready(Ok(Message::StartOfMessage(hdr))) => {
+//! for msg in rx.iter_messages(audiosrc) {
+//!     match msg {
+//!         Message::StartOfMessage(hdr) => {
 //!             println!("begin SAME voice message: {}", hdr);
 //!         }
-//!         FrameOut::Ready(Ok(Message::EndOfMessage)) => {
+//!         Message::EndOfMessage => {
 //!             println!("end SAME voice message");
 //!         }
-//!         _ => {}
 //!     }
 //! }
 //! ```
@@ -77,15 +78,22 @@
 //! The [`SameReceiver`](crate::SameReceiver) binds by iterator to any
 //! source of `f32` PCM mono (1-channel) audio samples. If you're using `i16`
 //! samples (as most sound cards do), you'll need to cast them to `f32`.
-//! There is no need to scale them; the AGC will take care of that.
+//! There is no need to scale them as long as you configure the
+//! AGC properly, as above.
 //!
 //! The iterator consumes as many samples as possible until the next
-//! [`FrameOut`] event. Events include all major state changes, such as
-//! acquisition of signal and success or failure to decode a SAME header.
+//! [`Message`] is decoded.
 //!
-//! The example above traps only the events which signal the beginning and
-//! end of a SAME message. The actual "message" part of a SAME message is
-//! the audio itself, which should contain a voice message that
+//! You can use the [`iter_frames()`](SameReceiver::iter_frames)
+//! method instead to obtain more information about what the demodulator is
+//! doing, including errors framing messages.
+//!
+//! ### Interpreting Messages
+//!
+//! The [`Message`] type marks the start or end of a SAME message. The
+//! actual "message" part of a SAME message is the audio itself, which
+//! should contain a voice message that
+//!
 //! * describes the event; and
 //! * provides instructions to the listener.
 //!
@@ -182,7 +190,7 @@ mod waveform;
 pub use builder::{EqualizerBuilder, SameReceiverBuilder};
 pub use framing::FrameOut;
 pub use message::{InvalidDateErr, Message, MessageDecodeErr, MessageHeader};
-pub use receiver::{SameReceiver, SourceIter};
+pub use receiver::{SameReceiver, SourceIterFrames};
 pub use samecodes::{
     EventCode, Originator, SignificanceLevel, UnknownSignificanceLevel, UnrecognizedEventCode,
 };
