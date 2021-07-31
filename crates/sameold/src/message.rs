@@ -434,11 +434,11 @@ impl MessageHeader {
     ///
     /// The FCC or other regulatory body-assigned callsign
     /// of the sending station. Minus signs (`-`) in the
-    /// callsign are replaced with slashes (`/`). This field
-    /// is always eight characters long.
+    /// callsign are replaced with slashes (`/`).
     pub fn callsign(&self) -> &str {
         let end = self.message.len();
-        &self.message[end - Self::OFFSET_FROMEND_CALLSIGN..end - Self::OFFSET_FROMEND_CALLSIGN_END]
+        &self.message[self.offset_time + Self::OFFSET_FROMPLUS_CALLSIGN
+            ..end - Self::OFFSET_FROMEND_CALLSIGN_END]
     }
 
     /// Count of parity errors
@@ -464,7 +464,7 @@ impl MessageHeader {
     const OFFSET_AREA_START: usize = 13;
     const OFFSET_FROMPLUS_VALIDTIME: usize = 1;
     const OFFSET_FROMPLUS_ISSUETIME: usize = 6;
-    const OFFSET_FROMEND_CALLSIGN: usize = 9;
+    const OFFSET_FROMPLUS_CALLSIGN: usize = 14;
     const OFFSET_FROMEND_CALLSIGN_END: usize = 1;
     const PANIC_MSG: &'static str = "MessageHeader validity check admitted a malformed message";
 }
@@ -575,7 +575,7 @@ const PREFIX_MESSAGE_END: &str = "NNNN";
 fn check_header(hdr: &str) -> Result<(usize, usize), MessageDecodeErr> {
     lazy_static! {
         static ref RE: Regex =
-            Regex::new(r"^ZCZC-[A-Z]{3}-[A-Z]{3}(-[0-9]{6})+(\+[0-9]{4}-[0-9]{7}-.{8}-)")
+            Regex::new(r"^ZCZC-[A-Z]{3}-[A-Z]{3}(-[0-9]{6})+(\+[0-9]{4}-[0-9]{7}-.{3,8}-)")
                 .expect("bad SAME regexp");
     }
 
