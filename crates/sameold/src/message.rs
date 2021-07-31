@@ -44,7 +44,7 @@ pub enum Message {
     ///
     /// A `StartOfMessage` indicates that a SAME/EAS audio
     /// message immediately follows. The message
-    /// [header](struct.MessageHeader.html) contains the event
+    /// [header](MessageHeader) contains the event
     /// type, affected areas, time extents, and originator
     /// information.
     ///
@@ -223,13 +223,13 @@ impl MessageHeader {
     /// Decodes the event code into an enumerated type.
     /// For example, messages which contain an
     /// [`event_str()`](#method.event_str) of "`RWT`" will decode
-    /// as [`EventCode::RequiredWeeklyTest`](enum.EventCode.html#variant.RequiredWeeklyTest).
+    /// as [`EventCode::RequiredWeeklyTest`](EventCode#variant.RequiredWeeklyTest).
     ///
     /// If the event code is unrecognized, an error is returned.
     /// An error here does **NOT** mean that the message is
     /// invalid or should be discarded. Instead, if the
     /// error is
-    /// [`WithSignificance`](enum.UnrecognizedEventCode.html#variant.WithSignificance),
+    /// [`WithSignificance`](UnrecognizedEventCode#variant.WithSignificance),
     /// then you should treat it as a valid (but unknown)
     /// message at the given significance level. This will help
     /// your application react correctly if new codes are
@@ -247,7 +247,7 @@ impl MessageHeader {
     /// );
     /// ```
     ///
-    /// All `EventCode` are mapped to a [significance level](enum.SignificanceLevel.html).
+    /// All `EventCode` are mapped to a [significance level](crate::SignificanceLevel).
     /// This may be useful when deciding how to handle the event.
     ///
     /// ```

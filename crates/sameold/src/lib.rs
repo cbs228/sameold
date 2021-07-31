@@ -1,5 +1,7 @@
 //! # sameold: SAME/EAS Demodulation
 //!
+//! *Over-the-air weather alerts for your desktop or RPi.*
+//!
 //! This crate provides a digital demodulator and decoder for
 //! [Specific Area Message Encoding](https://en.wikipedia.org/wiki/Specific_Area_Message_Encoding)
 //! (SAME). It can detect the presence of SAME messages in an audio signal
@@ -16,6 +18,10 @@
 //! for receiving weather alerts.
 //!
 //! ## Example
+//!
+//! A complete example may be found in our
+//! [`samedec`](https://crates.io/crates/samedec) crate, which provides a
+//! command-line program for decoding SAME via pipes.
 //!
 //! You will first need to recover *baseband audio* from a radio or
 //! television station which broadcasts SAME signals. Obtain the
@@ -66,17 +72,16 @@
 //! ```
 //!
 //! The digital receiver is created via a
-//! [builder](struct.SameReceiverBuilder.html).
+//! [builder](crate::SameReceiverBuilder).
 //!
-//! The [`SameReceiver`](struct.SameReceiver.html) binds by iterator to any
+//! The [`SameReceiver`](crate::SameReceiver) binds by iterator to any
 //! source of `f32` PCM mono (1-channel) audio samples. If you're using `i16`
 //! samples (as most sound cards do), you'll need to cast them to `f32`.
 //! There is no need to scale them; the AGC will take care of that.
 //!
 //! The iterator consumes as many samples as possible until the next
-//! [`FrameOut`](enum.FrameOut.html)
-//! event. Events include all major state changes, such as acquisition of
-//! signal and success or failure to decode a SAME header.
+//! [`FrameOut`] event. Events include all major state changes, such as
+//! acquisition of signal and success or failure to decode a SAME header.
 //!
 //! The example above traps only the events which signal the beginning and
 //! end of a SAME message. The actual "message" part of a SAME message is
@@ -125,7 +130,7 @@
 //! Canada. It was originally developed for use with broadcast stations that
 //! carry analog audio signals, such as:
 //!
-//! * NOAA Weather Radio
+//! * [NOAA Weather Radio](https://www.weather.gov/nwr/)
 //! * Commercial FM radio broadcast stations
 //! * Commercial television broadcast and cable networks
 //!
@@ -143,12 +148,23 @@
 //! ## Crate features
 //!
 //! * `chrono`: Use chrono to calculate message
-//!   [issuance times](struct.MessageHeader.html#method.issue_datetime)
+//!   [issuance times](crate::MessageHeader#method.issue_datetime)
 //!   and other fields as true UTC timestamps. If enabled, `chrono`
 //!   becomes part of this crate's public API.
 //!
+//! ## Contributing
+//!
+//! If you have a **recording** of a signal that you think should demodulate, but
+//! doesn't, please open an new issue on
+//! [github](https://github.com/cbs228/sameold). Either attach or link to your
+//! recording.
+//!
+//! Please read our
+//! [contributing guidelines](https://github.com/cbs228/sameold/blob/master/CONTRIBUTING.md)
+//! before opening any issues or PRs.
 
 #![deny(unsafe_code)]
+#![warn(missing_docs)]
 
 mod agc;
 mod builder;

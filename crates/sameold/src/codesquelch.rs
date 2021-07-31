@@ -1,6 +1,6 @@
 //! Access code correlation and squelch
 //!
-//! The [CodeCorrelator](struct.CodeCorrelator.html)
+//! The [`CodeCorrelator`]
 //! searches the given input symbols for a known sync
 //! pattern. The number of bit errors is output. When
 //! the number of bit errors is zero, the system is
@@ -8,7 +8,7 @@
 //! detect the start of transmission and also to align
 //! the system to byte boundaries.
 //!
-//! The [CodeAndPowerSquelch](struct.CodeAndPowerSquelch.html)
+//! The [`CodeAndPowerSquelch`]
 //! extends this by buffering symbols and looking for
 //! the sync pattern. When sync is found, samples are
 //! emitted. The `CodeAndPowerSquelch` also enforces a
@@ -40,7 +40,7 @@ pub enum SquelchState {
 
     /// Dropped symbol synchronization
     ///
-    /// No further [`SquelchOut`](struct.SquelchOut.html) will
+    /// No further [`SquelchOut`] will
     /// be output until sync is acquired.
     Dropped,
 }
@@ -210,18 +210,17 @@ impl CodeAndPowerSquelch {
 
     /// Process and synchronize input
     ///
-    /// The `CodeSquelch` expects *TWO* samples per symbol at the
-    /// input. The input must already be aligned to the symbol
+    /// The `CodeAndPowerSquelch` expects *TWO* samples per symbol
+    /// at the input. The input must already be aligned to the symbol
     /// clock: `input[0]` must be a zero, and `input[1]` must be
     /// a symbol estimate. This is, coincidentally, just how
-    /// [`TimingLoop`](../symsync/struct.TimingLoop.html) outputs
+    /// [`TimingLoop`](crate::symsync::TimingLoop) outputs
     /// them.
     ///
     /// If the output is `None`, the sync has not yet been found.
     ///
     /// If the output is `Some`, the sync has been acquired.
-    /// Synchronized samples are output in
-    /// [`SquelchOut`](struct.SquelchOut.html).
+    /// Synchronized samples are output in [`SquelchOut`].
     ///
     /// This method may panic if `input` does not contain
     /// exactly two samples (and will panic in debug mode).
@@ -376,11 +375,11 @@ impl CodeAndPowerSquelch {
 
     /// Is the synchronization locked?
     ///
-    /// When unlocked, the `CodeSquelch` will resynchronize
+    /// When unlocked, the `CodeAndPowerSquelch` will resynchronize
     /// itself *any time* it detects the sync sequence. If your
     /// frame data might contain the sync sequence, this could
-    /// be a problem. When locked, the `CodeSquelch` will never
-    /// resynchronize once sync is acquired.
+    /// be a problem. When locked, the `CodeAndPowerSquelch` will
+    /// never resynchronize once sync is acquired.
     #[allow(dead_code)]
     pub fn is_locked(&self) -> bool {
         self.sync_lock

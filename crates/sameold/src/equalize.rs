@@ -7,7 +7,7 @@
 //! 2. Hard decision slicing
 //! 3. Bits to bytes
 //!
-//! The [`Equalizer`](struct.Equalizer.html) operates on
+//! The [`Equalizer`] operates on
 //! two samples per symbol and collects estimated symbols
 //! into bytes. Bytes are transmitted least-significant
 //! bit (LSb) first. The "hard decision" slicer logic is
@@ -149,7 +149,7 @@ impl Equalizer {
     ///
     /// Process a slice of 16 samples (8 symbols)(8 bits), which
     /// must already be aligned to a byte boundary by
-    /// [`CodeSquelch`](../codesquelch/struct.CodeSquelch.html)
+    /// [`CodeAndPowerSquelch`](crate::codesquelch::CodeAndPowerSquelch)
     /// or some other mechanism. The `byte_samples` must have
     /// symbol estimates in odd indices like
     ///

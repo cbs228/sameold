@@ -4,7 +4,7 @@ use crate::receiver::SameReceiver;
 ///
 /// The builder comes with a sensible set of default options.
 /// All you really need to provide is the input sampling
-/// rate. The [`SameReceiver`](struct.SameReceiver.html) was
+/// rate. The [`SameReceiver`] was
 /// designed to work well at a sampling rate of 22050 Hz,
 /// however, and you may wish to tweak some of these values.
 ///

@@ -1,6 +1,6 @@
 //! # FIR linear filters
 //!
-//! The [FilterCoeff](struct.FilterCoeff.html) implements the
+//! The [`FilterCoeff`] implements the
 //! multiply-accumulate operation of a Finite Impulse Response
 //! filter. FIR filters convolve the input with an impulse
 //! response `h` to obtain the output. Convolution consists of
@@ -16,7 +16,7 @@
 //!
 //! ## Multiply-Accumulate
 //!
-//! [FilterCoeff](struct.FilterCoeff.html) implements only (1). To
+//! [`FilterCoeff`] implements only (1). To
 //! use, let the input window be a slice like
 //!
 //! ```txt
@@ -49,7 +49,7 @@
 //!
 //! ## Sliding window
 //!
-//! The [`Window`](struct.Window.html) class implements a sliding
+//! The [`Window`] class implements a sliding
 //! window. New samples are pushed onto the window, and old samples
 //! are allowed to age off. The `Window` has a fixed size at
 //! construction time.

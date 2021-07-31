@@ -69,8 +69,7 @@ impl SameReceiver {
     /// Receive SAME messages from a source of audio
     ///
     /// Bind an iterator which will consume the `input` and
-    /// produce SAME [`FrameOut`](enum.FrameOut.html) events,
-    /// which include:
+    /// produce SAME [`FrameOut`] events, which include:
     ///
     /// * notifications about acquired and dropped carrier,
     /// * attempts to frame messages; and
@@ -167,8 +166,7 @@ impl SameReceiver {
     //
     // Accepts a signed 16-bit PCM audio sample as `input`
     // and processes it for SAME messages. If the system's
-    // state changes, a [`FrameOut`](enum.FrameOut.html)
-    // is emitted.
+    // state changes, a [`FrameOut`] is emitted.
     #[inline]
     fn process_high_rate(&mut self, input: f32) -> Option<FrameOut> {
         // high-rate processing: agc and push onto demodulator's buffer
@@ -371,7 +369,7 @@ impl From<&SameReceiverBuilder> for SameReceiver {
 ///
 /// This iterator is bound to a source of mono f32 PCM
 /// audio samples. Calling the `next()` method will
-/// return the next [`FrameOut`](enum.FrameOut.html)
+/// return the next [`FrameOut`]
 /// event from the SAME Receiver or `None` if the
 /// available samples have been consumed without any
 /// new events.

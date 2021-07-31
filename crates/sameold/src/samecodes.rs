@@ -9,7 +9,7 @@ use thiserror::Error;
 
 /// SAME message originator code
 ///
-/// See [Message::originator()](struct.Message.html#method.originator).
+/// See [Message::originator()](crate::Message#method.originator).
 /// Originator codes may be converted `from()` their SAME string
 /// representations. Using them `.as_ref()` or via `Display` will
 /// show a human-readable string.
@@ -99,8 +99,8 @@ impl fmt::Display for Originator {
 
 /// SAME message significance level
 ///
-/// Usually constructed as part of an [`EventCode`](enum.EventCode.html).
-/// See also [MessageHeader::event()](struct.MessageHeader.html#method.event)
+/// Usually constructed as part of an [`EventCode`].
+/// See also [MessageHeader::event()](crate::MessageHeader#method.event)
 ///
 /// Significance levels have a single-character text
 /// representation, like "`T`" for Test. You can attempt to
@@ -237,6 +237,10 @@ impl TryFrom<&str> for SignificanceLevel {
     }
 }
 
+/// Unknown significance level
+///
+/// The event code is not known, and we were unable to determine
+/// a significance level from it.
 #[derive(Error, Clone, Debug, PartialEq, Eq)]
 #[error("The event significance level could not be determined")]
 pub struct UnknownSignificanceLevel {}
@@ -244,7 +248,7 @@ pub struct UnknownSignificanceLevel {}
 /// SAME message event code
 ///
 /// Usually constructed via
-/// [MessageHeader::event()](struct.MessageHeader.html#method.event).
+/// [MessageHeader::event()](crate::MessageHeader#method.event).
 /// Event codes were obtained from
 /// <https://docs.fcc.gov/public/attachments/FCC-16-80A1.pdf>.
 ///
@@ -262,7 +266,7 @@ pub struct UnknownSignificanceLevel {}
 /// );
 /// ```
 ///
-/// All events are mapped to a [significance level](enum.SignificanceLevel.html).
+/// All events are mapped to a [significance level](SignificanceLevel).
 /// This may be useful when deciding how to handle the event.
 ///
 /// ```
@@ -550,7 +554,7 @@ impl EventCode {
     /// The significance level ranges from "`Test`"
     /// (i.e., "this is only a test") to "`Warning`." Each
     /// event code has a significance level associated with
-    /// it. The [`SignificanceLevel`](enum.SignificanceLevel.html)
+    /// it. The [`SignificanceLevel`](SignificanceLevel)
     /// is useful for determining whether an event merits a
     /// "noisy" and/or "immediate" alert for the message.
     pub fn to_significance_level(&self) -> SignificanceLevel {
@@ -586,7 +590,7 @@ impl TryFrom<&str> for EventCode {
     /// An error here does **NOT** mean that the message is
     /// invalid or should be discarded. Instead, if the
     /// error is
-    /// [`WithSignificance`](enum.UnrecognizedEventCode.html#variant.WithSignificance),
+    /// [`WithSignificance`](UnrecognizedEventCode#variant.WithSignificance),
     /// then you should treat it as a valid (but unknown)
     /// message at the given significance level. This will help
     /// your application react correctly if new codes are
@@ -627,7 +631,7 @@ impl fmt::Display for EventCode {
 /// Even if the complete event code is unknown, the parser may
 /// still be able to extract some meaning from it. Most new
 /// messages end in the
-/// [`SignificanceLevel`](enum.SignificanceLevel.html). A new
+/// [`SignificanceLevel`](SignificanceLevel). A new
 /// "Derecho Warning" message, with fictitious code "`DEW`,"
 /// still ends in `W` for Warning. Your client application
 /// should react to it accordingly as a life-threatening Warning,
@@ -643,6 +647,7 @@ pub enum UnrecognizedEventCode {
     #[error("Unrecognized")]
     Unrecognized,
 
+    /// An unknown event code which *does* match a significance level
     #[error("Unrecognized {0}")]
     WithSignificance(SignificanceLevel),
 }

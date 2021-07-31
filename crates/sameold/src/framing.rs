@@ -18,8 +18,9 @@ use crate::message::{Message, MessageDecodeErr};
 /// SAME/EAS message framer
 ///
 /// The `Framer` does nothing until the
-/// [`CodeSquelch`](../codesquelch/index.html) or some other
-/// process invokes the [`input()`](#method.input) method.
+/// [`CodeAndPowerSquelch`](crate::codesquelch::CodeAndPowerSquelch)
+/// or some other process invokes the [`input()`](#method.input)
+/// method.
 /// with the `restart` flag set. This indicates that the
 /// receiver has detected the preamble and has synchronized
 /// to byte boundaries. You may use the `restart` flag at
@@ -37,10 +38,10 @@ use crate::message::{Message, MessageDecodeErr};
 ///
 /// At the end of transmission, the `Framer` attempts to
 /// parity-correct the last three messages received into
-/// one SAME [`Message`](struct.Message.html). If it can,
+/// one SAME [`Message`](crate::Message). If it can,
 /// the message is emitted. If it cannot, a decoding error
 /// is reported as a
-/// [`MessageDecodeErr`](struct.MessageDecodeErr.html).
+/// [`MessageDecodeErr`](crate::MessageDecodeErr).
 /// Either way, the conclusion of the framing attempt must
 /// signal the squelch and equalizer to reset and wait for
 /// the next sync.
@@ -103,7 +104,7 @@ pub enum FrameOut {
     /// succeeded if the value is `Ok`.
     ///
     /// The result contains either a fully-decoded
-    /// [`Message`](struct.Message.html) that is
+    /// [`Message`](crate::Message) that is
     /// ready for presentation to the user *or* an
     /// error decoding the same. Errors indicate only
     /// that decoding has failed *for the moment*, and
@@ -127,8 +128,8 @@ impl Framer {
     ///
     /// * If the value is set too high, the Framer might not drop
     ///   carrier in between bursts. This can be a problem if the
-    ///   synchronization mechanism (i.e., `CodeSquelch`) won't
-    ///   re-sync during a frame.
+    ///   synchronization mechanism (i.e., `CodeAndPowerSquelch`)
+    ///   won't re-sync during a frame.
     pub fn new(max_prefix_bit_errors: u32, max_invalid_bytes: u32) -> Self {
         Self {
             bursts: MessageTriple::new(),
@@ -152,7 +153,7 @@ impl Framer {
     /// chain and attempts to frame a message. The
     /// `symbol_count` should be set to the lifetime count of
     /// symbols received by the
-    /// [`CodeAndPowerSquelch`](struct.CodeAndPowerSquelch.html).
+    /// [`CodeAndPowerSquelch`](crate::codesquelch::CodeAndPowerSquelch).
     ///
     /// Whenever the preamble sequence is detected and has been
     /// synchronized to, the caller must set the `restart` flag
@@ -168,8 +169,7 @@ impl Framer {
     /// 3. More than `max_invalid_bytes` are received, which is
     ///    an indication that the carrier has been dropped.
     ///
-    /// See [`FrameOut`](enum.FrameOut.html) for a description
-    /// of the output.
+    /// See [`FrameOut`] for a description of the output.
     pub fn input(&mut self, data: u8, symbol_count: u64, restart: bool) -> FrameOut {
         if restart {
             if symbol_count > self.symbol_count_last_burst + MAX_INTERBURST_GAP_SYMBOLS
@@ -249,10 +249,9 @@ impl Framer {
     ///
     /// Set `symbol_count` to the lifetime count of symbols
     /// received by the
-    /// [`CodeAndPowerSquelch`](struct.CodeAndPowerSquelch.html).
+    /// [`CodeAndPowerSquelch`](crate::codesquelch::CodeAndPowerSquelch).
     ///
-    /// See [`FrameOut`](enum.FrameOut.html) for a description
-    /// of the output.
+    /// See [`FrameOut`] for a description of the output.
     pub fn end(&mut self, symbol_count: u64) -> FrameOut {
         // if we're reading a frame, that frame is done
         match self.state {
