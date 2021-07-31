@@ -1,0 +1,20 @@
+[package]
+name = "samedec"
+version = "0.1.0"
+authors = ["Colin S <3526918+cbs228@users.noreply.github.com>"]
+license = "MIT OR Apache-2.0"
+edition = "2018"
+homepage = "https://github.com/cbs228/sameold"
+repository = "https://github.com/cbs228/sameold.git"
+readme = "README.md"
+
+[badges]
+maintenance = {status = "experimental"}
+
+[dependencies]
+sameold = {path = "../sameold", version = "0.1.0"}
+chrono = "^0.4"
+byteorder = "^1.4"
+clap = "^2.33"
+log = "^0.4"
+pretty_env_logger = "^0.4"
