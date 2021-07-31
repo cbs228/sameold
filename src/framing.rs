@@ -5,7 +5,7 @@ use std::convert::TryFrom;
 use arraydeque::ArrayDeque;
 use arrayvec::ArrayVec;
 
-use log::{info, trace};
+use log::{debug, info};
 
 use crate::message::{Message, MessageDecodeErr};
 
@@ -53,27 +53,38 @@ pub struct Framer {
     max_invalid_bytes: u32,
 }
 
-/// Framer status
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// SAME/EAS Receiver Status
+///
+/// The SAME receiver decodes data in three basic steps:
+///
+/// 1. Synchronization: the receiver estimates the bit
+///    and byte synchronization of the incoming signal.
+///
+/// 2. Burst decoding: SAME transmissions are repeated
+///    three times. Each "burst" is decoded individually.
+///
+/// 3. Message framing: three bursts are assembled into
+///    a single message, which receives some basic
+///    validity checks before being emitted to the client.
+///
+/// This enum reports changes in the framing state to the
+/// caller. Each state change is emitted individually.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum FrameOut {
-    /// Not reading a burst
-    ///
-    /// The caller should cease providing data to the
-    /// Framer until the preamble sequence is detected
-    /// and synchronized to once again. When that
-    /// happens, set the `restart` flag to true.
+    /// No signal detected
     NoCarrier,
 
     /// Searching for burst prefix
     ///
-    /// The Framer is searching for a message prefix
-    /// like "`ZCZC`." Continue providing data bytes
-    /// to the framer.
+    /// The framer has synchronized to the bit/byte
+    /// boundaries and is searching for a message prefix
+    /// like "`ZCZC`."
     Searching,
 
     /// Now reading a burst
     ///
-    /// Continue providing data bytes to the framer.
+    /// A SAME burst has been detected and is now being
+    /// decoded.
     Reading,
 
     /// A message has been completely read
@@ -83,16 +94,11 @@ pub enum FrameOut {
     /// succeeded if the value is `Ok`.
     ///
     /// The result contains either a fully-decoded
-    /// [`Message`](../struct.Message.html) that is
+    /// [`Message`](struct.Message.html) that is
     /// ready for presentation to the user *or* an
     /// error decoding the same. Errors indicate only
     /// that decoding has failed *for the moment*, and
     /// future decodes may yield a useful message.
-    ///
-    /// The caller should cease providing data to the
-    /// Framer until the preamble sequence is detected
-    /// and synchronized to once again. When that
-    /// happens, set the `restart` flag to true.
     Ready(Result<Message, MessageDecodeErr>),
 }
 
@@ -149,8 +155,6 @@ impl Framer {
     /// See [`FrameOut`](enum.FrameOut.html) for a description
     /// of the output.
     pub fn input(&mut self, data: u8, restart: bool) -> FrameOut {
-        trace!("frame byte: {:#04x} \"{:?}\"", data, data as char);
-
         if restart {
             // End the current frame, if we're building one. We will
             // emit an answer if one is Ready.
@@ -239,11 +243,13 @@ impl Framer {
                     // got three bursts; try to frame them
                     FrameOut::Ready(try_recover_message(&mut self.bursts))
                 } else {
+                    info!("burst: no carrier");
                     FrameOut::NoCarrier
                 }
             }
             _ => {
                 self.state = State::Idle;
+                info!("burst: no carrier");
                 FrameOut::NoCarrier
             }
         }
@@ -341,7 +347,7 @@ enum State {
 fn try_recover_message(bursts: &mut MessageTriple) -> Result<Message, MessageDecodeErr> {
     let mut out = Burst::new();
     if let Some((msg, errs)) = correct_errors(bursts.iter(), &mut out) {
-        info!("frame ({} errors): \"{}\"", msg, errs);
+        debug!("frame ({} errors): \"{}\"", msg, errs);
 
         // if we get a valid message, clear the bursts buffer to
         // prevent later messages from being conflated with
