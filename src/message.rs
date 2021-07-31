@@ -25,6 +25,9 @@ use regex::Regex;
 ///
 /// The `EndOfMessage` demarcates the end of the audio message.
 ///
+/// `Message` implements `Display` and efficient conversion to
+/// `&str`.
+///
 /// More information on the SAME/EAS standard may be found in,
 /// * "NOAA Weather Radio (NWR) All Hazards Specific Area Message
 ///   Encoding (SAME)," NWSI 10-172, 3 Oct. 2011,
@@ -73,8 +76,24 @@ impl Message {
     /// Convert to string representation
     pub fn as_str(&self) -> &str {
         match self {
-            Self::StartOfMessage(m) => m.message(),
+            Self::StartOfMessage(m) => m.as_str(),
             Self::EndOfMessage => PREFIX_MESSAGE_END,
+        }
+    }
+
+    /// Count of parity errors
+    ///
+    /// The number of *bit errors* which were corrected by the
+    /// 2-of-3 parity correction algorithm. High parity error
+    /// counts indicate a high bit error rate in the receiving
+    /// system.
+    ///
+    /// Parity errors are *not* tracked for the `EndOfMessage`
+    /// variant.
+    pub fn parity_error_count(&self) -> usize {
+        match self {
+            Self::StartOfMessage(m) => m.parity_error_count(),
+            Self::EndOfMessage => 0,
         }
     }
 }
@@ -117,24 +136,28 @@ impl MessageHeader {
         })
     }
 
-    /// Try to construct a SAME header from `String`, with error count
+    /// Try to construct a SAME header from `String`, with error counts
     ///
     /// The `message` string must match the general format of
-    /// a SAME header. If it does not, an error is returned. The
-    /// `parity_errors` field is intended to store the number of
-    /// *bit errors* which were corrected by the 2-of-3 parity
-    /// algorithm.
-    pub fn new_with_error_count<S>(
-        message: S,
-        parity_errors: usize,
-    ) -> Result<Self, MessageDecodeErr>
+    /// a SAME header. If it does not, an error is returned.
+    ///
+    /// The `error_counts` slice counts the number of bit errors
+    /// corrected in byte of `message`. The slice must have the
+    /// same length as `message`.
+    pub fn new_with_errors<S>(message: S, error_counts: &[u8]) -> Result<Self, MessageDecodeErr>
     where
         S: Into<String>,
     {
         let mut out = Self::new(message)?;
-        out.parity_error_count = parity_errors;
+        let mut parity_error_count = 0;
+        for (&e, _m) in error_counts.iter().zip(out.message().as_bytes().iter()) {
+            parity_error_count += e as usize;
+        }
+
+        out.parity_error_count = parity_error_count;
         Ok(out)
     }
+
     /// Message text
     ///
     /// Returns UTF-8 string representation of a SAME/EAS
@@ -144,7 +167,16 @@ impl MessageHeader {
         &self.message
     }
 
-    /// Originator code
+    /// Message text
+    ///
+    /// Returns UTF-8 string representation of a SAME/EAS
+    /// message. Use the [`release()`](#method.release)
+    /// method to obtain an owned `String`.
+    pub fn as_str(&self) -> &str {
+        &self.message
+    }
+
+    /// Originator code (as string)
     ///
     /// A three-character string that is usually one of the
     /// following:
@@ -158,20 +190,15 @@ impl MessageHeader {
     ///
     /// - `EAS`: EAS Participant. Usually a broadcast station.
     ///
-    /// - `EAN`: Emergency Action Notification Network.
-    ///   Nation-wide activation authorized by the President of
-    ///   the United States. Takes priority over all other
-    ///   messages/station programming.
-    ///
     /// The originator code returned is three characters but is
     /// not guaranteed to be one of the above.
-    pub fn originator(&self) -> &str {
+    pub fn originator_str(&self) -> &str {
         &self.message[Self::OFFSET_ORG..Self::OFFSET_ORG + 3]
     }
 
     /// Event code
     ///
-    /// A three-character code which is generally formatted
+    /// A three-character code which is *generally* formatted
     /// according to severity level.
     ///
     /// - `xxT`: Test
@@ -182,11 +209,12 @@ impl MessageHeader {
     /// Major exceptions to this are the codes `SVR`
     /// ("Severe Thunderstorm Warning") and `TOR`
     /// ("Tornado Warning"), which are among the most common
-    /// messages in the United States.
+    /// messages in the United States. Plenty of other codes
+    /// also do not adhere to this standard.
     ///
     /// The event code returned is three characters but is
     /// not guaranteed to be one of the above.
-    pub fn event(&self) -> &str {
+    pub fn event_str(&self) -> &str {
         &self.message[Self::OFFSET_EVT..Self::OFFSET_EVT + 3]
     }
 
@@ -206,7 +234,7 @@ impl MessageHeader {
     ///
     /// Per the SAME standard, a message can have up to 31
     /// location codes.
-    pub fn location_iter<'m>(&'m self) -> std::str::Split<'m, char> {
+    pub fn location_str_iter<'m>(&'m self) -> std::str::Split<'m, char> {
         let locations = &self.message[Self::OFFSET_AREA_START..self.offset_time];
         locations.split('-')
     }
@@ -367,11 +395,11 @@ impl TryFrom<String> for Message {
     }
 }
 
-impl TryFrom<(String, usize)> for Message {
+impl TryFrom<(String, &[u8])> for Message {
     type Error = MessageDecodeErr;
 
     #[inline]
-    fn try_from(inp: (String, usize)) -> Result<Self, Self::Error> {
+    fn try_from(inp: (String, &[u8])) -> Result<Self, Self::Error> {
         if inp.0.starts_with(PREFIX_MESSAGE_START) {
             Ok(Message::StartOfMessage(MessageHeader::try_from(inp)?))
         } else if inp.0.starts_with(PREFIX_MESSAGE_END) {
@@ -418,12 +446,12 @@ impl TryFrom<String> for MessageHeader {
     }
 }
 
-impl TryFrom<(String, usize)> for MessageHeader {
+impl TryFrom<(String, &[u8])> for MessageHeader {
     type Error = MessageDecodeErr;
 
     #[inline]
-    fn try_from(inp: (String, usize)) -> Result<Self, Self::Error> {
-        Self::new_with_error_count(inp.0, inp.1)
+    fn try_from(inp: (String, &[u8])) -> Result<Self, Self::Error> {
+        Self::new_with_errors(inp.0, inp.1)
     }
 }
 
@@ -511,19 +539,26 @@ mod tests {
 
     #[test]
     fn test_message_header() {
-        const THREE_LOCATIONS: &str = "ZCZC-ORG-EEE-012345-567890-888990+0351-3661122-NOCALL00-@@@";
-        let msg = MessageHeader::try_from((THREE_LOCATIONS.into(), 3)).expect("bad msg");
+        const THREE_LOCATIONS: &str = "ZCZC-WXR-EEE-012345-567890-888990+0351-3661122-NOCALL00-@@@";
 
-        assert_eq!(msg.originator(), "ORG");
-        assert_eq!(msg.event(), "EEE");
+        let mut errs = vec![0u8; THREE_LOCATIONS.len()];
+        errs[0] = 1u8;
+        errs[20] = 5u8;
+        errs[THREE_LOCATIONS.len() - 1] = 8u8;
+
+        let msg = MessageHeader::try_from((THREE_LOCATIONS.to_owned(), errs.as_slice()))
+            .expect("bad msg");
+
+        assert_eq!(msg.originator_str(), "WXR");
+        assert_eq!(msg.event_str(), "EEE");
         assert_eq!(msg.valid_duration_str(), "0351");
         assert_eq!(msg.valid_duration(), (3, 51));
         assert_eq!(msg.issue_daytime_str(), "3661122");
         assert_eq!(msg.issue_daytime(), (366, 11, 22));
         assert_eq!(msg.callsign(), "NOCALL00");
-        assert_eq!(msg.parity_error_count(), 3);
+        assert_eq!(msg.parity_error_count(), 6);
 
-        let loc: Vec<&str> = msg.location_iter().collect();
+        let loc: Vec<&str> = msg.location_str_iter().collect();
         assert_eq!(loc.as_slice(), &["012345", "567890", "888990"]);
 
         // try again via Message

@@ -6,10 +6,10 @@ use arraydeque::ArrayDeque;
 use arrayvec::ArrayVec;
 
 #[cfg(not(test))]
-use log::{debug, info};
+use log::info;
 
 #[cfg(test)]
-use std::{println as debug, println as info};
+use std::println as info;
 
 use crate::message::{Message, MessageDecodeErr};
 
@@ -376,14 +376,13 @@ enum State {
 // If a message is emitted, the bursts buffer is cleared.
 fn try_recover_message(bursts: &mut MessageTriple) -> Result<Message, MessageDecodeErr> {
     let mut out = Burst::new();
-    if let Some((msg, errs)) = correct_errors(bursts.iter(), &mut out) {
-        debug!("frame ({} errors): \"{}\"", errs, msg);
-
+    let mut errs = Burst::new();
+    if let Some(msg) = correct_errors(bursts.iter(), &mut out, &mut errs) {
         // if we get a valid message, clear the bursts buffer to
         // prevent later messages from being conflated with
         // this one
-        let out = Message::try_from((msg.to_owned(), errs))?;
-        info!("message ({} errors): \"{}\"", errs, out);
+        let out = Message::try_from((msg.to_owned(), errs.as_slice()))?;
+        info!("message ({} errors): \"{}\"", out.parity_error_count(), out);
         bursts.clear();
 
         Ok(out)
@@ -397,13 +396,19 @@ fn try_recover_message(bursts: &mut MessageTriple) -> Result<Message, MessageDec
 //
 // If this method returns `Some`, the message consists of
 // only valid SAME/EAS characters and converts correctly
-// to a string, but no other guarantees are made.
-fn correct_errors<'b, 'o, B, S>(mut burst_iter: B, out: &'o mut Burst) -> Option<(&'o str, usize)>
+// to a string, but no other guarantees are made. The
+// message is written to `out`, and the bit error count
+// per byte is written ot `err_counts`.
+fn correct_errors<'b, 'o, B, S>(
+    mut burst_iter: B,
+    out: &'o mut Burst,
+    err_counts: &'o mut Burst,
+) -> Option<&'o str>
 where
     B: ExactSizeIterator<Item = &'b S>,
     S: AsRef<[u8]> + 'b,
 {
-    let mut total_bit_errors = 0usize;
+    err_counts.clear();
     out.clear();
 
     // iterate over bytes in all input buffers,
@@ -420,15 +425,20 @@ where
         // if the character is permitted after correction,
         // accept it… but mark it as an error too
         let byte_out_masked = byte_out & 0x7f;
-        total_bit_errors += (byte_out_masked != byte_out) as usize;
 
         // is the byte valid?
         if !is_allowed_byte(byte_out_masked) {
             break;
         }
 
-        total_bit_errors += errs as usize;
         if out.try_push(byte_out_masked).is_err() {
+            break;
+        }
+
+        if err_counts
+            .try_push(errs as u8 + (byte_out != byte_out_masked) as u8)
+            .is_err()
+        {
             break;
         }
     }
@@ -437,7 +447,7 @@ where
     // bytes we allow, but add an out for us in case
     // it does not
     match std::str::from_utf8(out.as_slice()) {
-        Ok(s) => Some((s, total_bit_errors)),
+        Ok(s) => Some(s),
         Err(_e) => None,
     }
 }
@@ -553,10 +563,13 @@ mod tests {
         const THREE: &[u8] = &[0x5a, 0x42, 0x0a, 0x43, 0x0a, 0xff];
         const TRIPLE: &[&[u8]] = &[ONE, TWO, THREE];
 
+        const EXPECT_ERRORS: &[u8] = &[2, 1, 2, 0];
+
         let mut outbuf = Burst::new();
-        let (outstr, num_errs) = correct_errors(TRIPLE.iter(), &mut outbuf).expect("decode err");
+        let mut errs = Burst::new();
+        let outstr = correct_errors(TRIPLE.iter(), &mut outbuf, &mut errs).expect("decode err");
         assert!(outstr.starts_with("ZCZC"));
-        assert!(num_errs > 0);
+        assert_eq!(EXPECT_ERRORS, &errs[0..4]);
     }
 
     #[test]
