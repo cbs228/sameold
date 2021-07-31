@@ -58,6 +58,14 @@ pub trait Demod: Clone + std::fmt::Debug + Sized {
     where
         S: AsRef<[f32]>;
 
+    /// Push a single sample into the demodulator
+    ///
+    /// Appends a single `input` sample to the demodulator's
+    /// history. This method does not perform any demodulation.
+    /// If you want to demodulate this `input` sample, you must
+    /// also invoke [`demod()`](Demod::demod).
+    fn push_scalar(&mut self, input: f32);
+
     /// Demodulate with the current history
     ///
     /// Demodulates the last symbol's worth of samples.
@@ -160,6 +168,11 @@ impl Demod for FskDemod {
         S: AsRef<[f32]>,
     {
         self.window_input.push(input);
+    }
+
+    #[inline]
+    fn push_scalar(&mut self, input: f32) {
+        self.window_input.push_scalar(input);
     }
 
     #[inline]

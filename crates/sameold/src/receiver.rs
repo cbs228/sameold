@@ -212,7 +212,7 @@ impl SameReceiver {
     fn process_high_rate(&mut self, input: f32) -> Option<FrameOut> {
         // high-rate processing: dc block, agc, and push onto demodulator's buffer
         let sa = self.agc.input(self.dc_block.filter(input));
-        self.demod.push(&[sa]);
+        self.demod.push_scalar(sa);
         self.ted_sample_clock += 1;
         self.input_sample_counter = self.input_sample_counter.wrapping_add(1);
 
