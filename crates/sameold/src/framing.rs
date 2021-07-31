@@ -285,8 +285,6 @@ impl Framer {
     // a valid data start prefix (16 bytes preamble + 4 bytes prefix + 1 byte margin)
     const PREFIX_SEARCH_LEN: u32 = 21;
 
-    const PANIC_CAPACITY_PREFIX: &'static str =
-        "expected empty message to hold at least the prefix";
     const PANIC_EXPECT_MESSAGE: &'static str = "expected populated message during DataRead";
     const PANIC_EXPECT_FULL: &'static str = "expected fully-populated ArrayVec";
 }
@@ -299,7 +297,7 @@ impl FrameOut {
     /// is `true`, the framer wants data. When this value is
     /// `false`, the framer needs to be restarted before it
     /// will do anything.
-    fn is_active(&self) -> bool {
+    pub fn is_active(&self) -> bool {
         match self {
             FrameOut::Searching => true,
             FrameOut::Reading => true,

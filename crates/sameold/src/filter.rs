@@ -75,6 +75,7 @@ pub struct FilterCoeff<T>(DVector<T>)
 where
     T: Copy + Scalar + One + Zero;
 
+#[allow(dead_code)]
 impl<T> FilterCoeff<T>
 where
     T: Copy + Scalar + One + Zero,
@@ -234,6 +235,7 @@ pub struct Window<T>(SliceDeque<T>)
 where
     T: Copy + Scalar + Zero;
 
+#[allow(dead_code)]
 impl<T> Window<T>
 where
     T: Copy + Scalar + Zero,

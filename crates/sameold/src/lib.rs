@@ -148,7 +148,7 @@
 //!   becomes part of this crate's public API.
 //!
 
-#![allow(dead_code)]
+#![deny(unsafe_code)]
 
 mod agc;
 mod builder;

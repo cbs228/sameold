@@ -592,18 +592,6 @@ fn check_header(hdr: &str) -> Result<(usize, usize), MessageDecodeErr> {
     Ok((mtc.start(), mtc.end()))
 }
 
-// Get last character of the given ASCII string
-//
-// The last byte of `s` must be valid UTF-8. Returns reference
-// to the last byte.
-fn last_ascii_character<'a>(s: &'a str) -> Option<&'a str> {
-    if s.is_empty() {
-        None
-    } else {
-        s.get((s.len() - 1)..s.len())
-    }
-}
-
 // Calculate message issuance time
 //
 // Calculate Utc datetime of message issuance from the
@@ -645,12 +633,6 @@ fn calculate_issue_time(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_last_ascii_character() {
-        assert_eq!(last_ascii_character("XXXW"), Some("W"));
-        assert_eq!(last_ascii_character(""), None);
-    }
 
     #[test]
     fn test_check_header() {

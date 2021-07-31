@@ -70,6 +70,7 @@ pub struct SymbolEstimate {
     pub err: f32,
 }
 
+#[allow(dead_code)]
 impl SymbolEstimate {
     /// New symbol estimate
     ///
@@ -250,6 +251,7 @@ pub struct ZeroCrossingTed {
     sample_counter: u32,
 }
 
+#[allow(dead_code)]
 impl ZeroCrossingTed {
     /// Number of input samples per symbol that this TED requires
     pub const SAMPLES_PER_SYMBOL: u32 = 2;

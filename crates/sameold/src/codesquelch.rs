@@ -381,6 +381,7 @@ impl CodeAndPowerSquelch {
     /// frame data might contain the sync sequence, this could
     /// be a problem. When locked, the `CodeSquelch` will never
     /// resynchronize once sync is acquired.
+    #[allow(dead_code)]
     pub fn is_locked(&self) -> bool {
         self.sync_lock
     }

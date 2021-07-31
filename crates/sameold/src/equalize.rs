@@ -99,6 +99,7 @@ pub struct Equalizer {
     mode: EqualizerState,
 }
 
+#[allow(dead_code)]
 impl Equalizer {
     /// Input length, in samples
     pub const INPUT_LENGTH: usize = 16;
@@ -493,8 +494,6 @@ mod tests {
     fn test_estimate_symbol_proakis() {
         const CHANNEL_COEFF: &[f32] = &[0.8f32, -0.2f32]; // tiny bit of ISI
         const INPUT: &[f32] = &[0.0f32, 1.0f32, 0.0f32, -1.0f32];
-        const RELAXATION: f32 = 0.10f32;
-        const REGULARIZATION: f32 = 1.0e-6f32;
 
         // this is what we're about to do the poor signal
         let channel_coeff = FilterCoeff::from_slice(CHANNEL_COEFF);
@@ -532,9 +531,6 @@ mod tests {
     // Test a complicated channel
     #[test]
     fn test_estimate_symbol_training() {
-        const RELAXATION: f32 = 0.10f32;
-        const REGULARIZATION: f32 = 1.0e-6f32;
-
         let mut uut = Equalizer::new(8, 4, 0.2, 1.0e-5, Some(crate::waveform::PREAMBLE_SYNC_WORD));
         uut.train().expect("training mode");
         assert_eq!(
@@ -590,9 +586,6 @@ mod tests {
 
     #[test]
     fn test_input() {
-        const RELAXATION: f32 = 0.10f32;
-        const REGULARIZATION: f32 = 1.0e-6f32;
-
         let chansig = bytes_to_samples(&[0xAB, 0xBA], 2);
         let mut uut = Equalizer::new(8, 4, 0.2, 1.0e-5, None);
         let out: Vec<(u8, f32)> = chansig.chunks(16).map(|sa| uut.input(sa)).collect();

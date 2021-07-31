@@ -124,6 +124,7 @@ impl FskDemod {
     /// Returns number of filter taps in the matched filters.
     /// This struct imposes a delay of `ntaps() / 2`.
     #[inline]
+    #[allow(dead_code)]
     pub fn ntaps(&self) -> usize {
         self.coeff_mark.len()
     }
