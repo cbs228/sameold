@@ -15,7 +15,7 @@
 //! must be manually reset.
 
 use arraydeque::ArrayDeque;
-use log::{debug, info};
+use log::info;
 
 /// Access code squelch
 ///
@@ -44,8 +44,9 @@ use log::{debug, info};
 /// which makes it easy to assemble them into bytes.
 ///
 /// This block imposes a delay of 32 *symbols* (64 samples)
-/// and will always output `CodeSquelch::OUTPUT_LENGTH`
-/// samples at a time when output is available.
+/// and will always output 16 samples at a time when output
+/// is available. This is, conveniently, one byte's worth
+/// of samples.
 ///
 /// This block can only *acquire* the synchronization… it
 /// cannot *drop* it. To drop sync, higher-level logic
@@ -59,10 +60,10 @@ pub struct CodeSquelch {
     correlator: CodeCorrelator,
 
     // sample history
-    history: ArrayDeque<[f32; Self::OUTPUT_LENGTH], arraydeque::Wrapping>,
+    history: ArrayDeque<[f32; 64], arraydeque::Wrapping>,
 
-    // counts number of samples until next output
-    sample_clock: Option<u32>,
+    // time since samples were emitted
+    sample_clock: Option<u8>,
 
     // prevent resynchronization
     sync_lock: bool,
@@ -73,7 +74,7 @@ impl CodeSquelch {
     pub const INPUT_LENGTH: usize = 2;
 
     /// Output length, in samples
-    pub const OUTPUT_LENGTH: usize = 64;
+    pub const OUTPUT_LENGTH: usize = 16;
 
     /// Create squelch
     ///
@@ -106,61 +107,67 @@ impl CodeSquelch {
     ///
     /// If the output is `None`, the sync has not yet been found.
     ///
-    /// If `Some`, the output is a tuple of `(samples_iter, sync)`,
-    /// where `samples` is an iterator over output samples. The
-    /// iterator always contains 64 samples.
+    /// If `Some`, the output is a tuple of `(samples, sync)`,
+    /// where `samples` is an array of 16 samples (8 symbols).
     ///
     /// The `sync` flag is set to true if the first symbol in the
-    /// iterator is the first sample of the `sync_to` sync word.
+    /// output array is the first sample of the `sync_to` sync word.
     /// The `sync` output may be used to put an equalizer into
     /// training mode against the sync word.
     ///
     /// This method may panic if `input` does not contain
     /// exactly two samples (and will panic in debug mode).
-    pub fn input(
-        &mut self,
-        input: &[f32],
-    ) -> Option<(impl std::iter::ExactSizeIterator<Item = f32> + '_, bool)> {
+    pub fn input(&mut self, input: &[f32]) -> Option<([f32; Self::OUTPUT_LENGTH], bool)> {
+        // append to history and correlator
         assert_eq!(Self::INPUT_LENGTH, input.len());
         self.history.push_back(input[0]);
         self.history.push_back(input[1]);
-
         let err = self.correlator.search(input[1]);
-        let sync = err <= self.max_errors;
-        debug!("detected sync pattern with {} errors", err);
 
-        if sync {
-            match self.sample_clock {
+        if !self.history.is_full() {
+            // wait for buffer to fill
+            return None;
+        }
+
+        // we find the sync if we are allowed to and the
+        // err count is low enough
+        let new_sync = !self.sync_lock && err <= self.max_errors;
+        if new_sync {
+            self.sample_clock = match self.sample_clock {
                 None => {
-                    // no sync yet, so take this sync
-                    self.sample_clock = Some(0);
                     info!("acquired byte synchronization with {} errors", err);
+                    Some(0)
                 }
                 Some(n) => {
-                    if !self.sync_lock {
-                        info!(
-                            "adjust byte synchronization by +{} samples with {} errors",
-                            32 - n,
-                            err
-                        );
-                        self.sample_clock = Some(0);
-                    }
+                    info!(
+                        "adjust byte synchronization by +{} symbols with {} errors",
+                        8 - n,
+                        err
+                    );
+                    Some(0)
                 }
             }
         }
 
-        let sync = sync && !self.sync_lock;
-
+        // if the output clock is byte-aligned, output the last
+        // byte's worth of samples
         match self.sample_clock {
+            None => None,
             Some(0) => {
+                let mut out = [0.0f32; Self::OUTPUT_LENGTH];
+                for (o, h) in out
+                    .iter_mut()
+                    .zip(self.history.iter().take(Self::OUTPUT_LENGTH))
+                {
+                    *o = *h;
+                }
                 self.sample_clock = Some(1);
-                Some((self.history.iter().map(|v| *v), sync))
+                Some((out, new_sync))
             }
-            Some(n) => {
-                self.sample_clock = Some((n + 1) % 32u32);
+            Some(ref mut clk) => {
+                *clk = (*clk + 1) % 8;
                 None
             }
-            None => None,
         }
     }
 
@@ -182,9 +189,6 @@ impl CodeSquelch {
         self.history.clear();
         self.sample_clock = None;
         self.sync_lock = false;
-        for _i in 0..self.history.capacity() {
-            self.history.push_back(0.0f32);
-        }
     }
 
     /// Is the squelch synchronized?
@@ -314,22 +318,28 @@ mod tests {
         let mut squelch = CodeSquelch::new(crate::waveform::PREAMBLE_SYNC_WORD, 0);
         assert!(!squelch.is_sync());
 
+        let mut align_idx = 0; // sync sequence begins at 0 samples in insamp
         for (chunk, inp) in insamp.chunks(2).enumerate() {
             let lock = squelch.input(inp);
             match lock {
                 Some((outsamp, is_sync)) => {
-                    assert!(is_sync);
-                    assert_eq!(31, chunk);
-                    let outsamp: Vec<f32> = outsamp.collect();
-                    assert_eq!(&outsamp, &insamp[0..64]);
+                    // only get one sync pulse
+                    if is_sync {
+                        assert_eq!(chunk, 31);
+                        assert_eq!(squelch.correlator.data, 0xabababab);
+                    }
+                    assert!(!is_sync || chunk == 31);
+
+                    // outsamp is aligned with insamp
+                    assert_eq!(&outsamp, &insamp[align_idx..align_idx + 16]);
+                    align_idx += 16;
                 }
-                _ => {
-                    assert!(31 != chunk);
-                }
+                _ => {}
             }
         }
 
         assert!(squelch.is_sync());
+        assert_eq!(align_idx, 32);
         squelch.reset();
         assert!(!squelch.is_sync());
     }
@@ -342,18 +352,16 @@ mod tests {
         let mut squelch = CodeSquelch::new(crate::waveform::PREAMBLE_SYNC_WORD, 1);
         assert!(!squelch.is_sync());
 
+        let mut align_idx = 32; // sync sequence begins at 32 samples in insamp
         for (chunk, inp) in insamp.chunks(2).enumerate() {
             let lock = squelch.input(inp);
             match lock {
                 Some((outsamp, is_sync)) => {
-                    assert!(is_sync);
-                    assert_eq!(47, chunk);
-                    let outsamp: Vec<f32> = outsamp.collect();
-                    assert_eq!(&outsamp, &insamp[32..64 + 32]);
+                    assert!(!is_sync || 47 == chunk);
+                    assert_eq!(&outsamp, &insamp[align_idx..align_idx + 16]);
+                    align_idx += 16;
                 }
-                _ => {
-                    assert!(47 != chunk);
-                }
+                _ => {}
             }
         }
 
@@ -371,13 +379,14 @@ mod tests {
         let mut squelch = CodeSquelch::new(crate::waveform::PREAMBLE_SYNC_WORD, 3);
         assert!(!squelch.is_sync());
 
+        let mut align_idx = 32; // sync sequence begins at 32 samples in insamp
         for (chunk, inp) in insamp.chunks(2).enumerate() {
             let lock = squelch.input(inp);
             match lock {
                 Some((outsamp, _is_sync)) => {
                     if chunk == 47 {
-                        let outsamp: Vec<f32> = outsamp.collect();
-                        assert_eq!(&outsamp, &insamp[32..64 + 32]);
+                        assert_eq!(&outsamp, &insamp[align_idx..align_idx + 16]);
+                        align_idx += 16;
                         found_later = true;
                     } else {
                         found_early = true;
