@@ -10,3 +10,9 @@ readme = "README.md"
 
 [badges]
 maintenance = {status = "experimental"}
+
+[dependencies]
+assert_approx_eq = "1.1.0"
+nalgebra = "^0.26.1"
+num-complex = "^0.3.1"
+num-traits = "^0.2"
