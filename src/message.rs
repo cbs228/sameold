@@ -6,6 +6,8 @@ use std::fmt;
 use lazy_static::lazy_static;
 use regex::Regex;
 
+use crate::samecodes::{EventCode, Originator, UnrecognizedEventCode};
+
 /// A fully-decoded SAME/EAS message
 ///
 /// In the EAS, the "message" is actually the audio signal to be
@@ -176,6 +178,14 @@ impl MessageHeader {
         &self.message
     }
 
+    /// Originator code
+    ///
+    /// The ultimate source of the message, such as
+    /// `Originator::WeatherService` for the National Weather Service
+    pub fn originator(&self) -> Originator {
+        Originator::from(self.originator_str())
+    }
+
     /// Originator code (as string)
     ///
     /// A three-character string that is usually one of the
@@ -194,6 +204,48 @@ impl MessageHeader {
     /// not guaranteed to be one of the above.
     pub fn originator_str(&self) -> &str {
         &self.message[Self::OFFSET_ORG..Self::OFFSET_ORG + 3]
+    }
+
+    /// Event code
+    ///
+    /// Decodes the event code into an enumerated type.
+    /// For example, messages which contain an
+    /// [`event_str()`](#method.event_str) of "`RWT`" will decode
+    /// as [`EventCode::RequiredWeeklyTest`](enum.EventCode.html#variant.RequiredWeeklyTest).
+    ///
+    /// If the event code is unrecognized, an error is returned.
+    /// An error here does **NOT** mean that the message is
+    /// invalid or should be discarded. Instead, if the
+    /// error is
+    /// [`WithSignificance`](enum.UnrecognizedEventCode.html#variant.WithSignificance),
+    /// then you should treat it as a valid (but unknown)
+    /// message at the given significance level. This will help
+    /// your application react correctly if new codes are
+    /// added in the future.
+    ///
+    /// Event codes can be converted to human-readable strings.
+    ///
+    /// ```
+    /// use sameold::EventCode;
+    ///
+    /// assert_eq!("Required Weekly Test", (EventCode::RequiredWeeklyTest).as_display_str());
+    /// assert_eq!(
+    ///     "Required Weekly Test",
+    ///     format!("{}", EventCode::RequiredWeeklyTest)
+    /// );
+    /// ```
+    ///
+    /// All `EventCode` are mapped to a [significance level](enum.SignificanceLevel.html).
+    /// This may be useful when deciding how to handle the event.
+    ///
+    /// ```
+    /// # use sameold::{EventCode, SignificanceLevel};
+    ///
+    /// let lvl = (EventCode::RequiredWeeklyTest).to_significance_level();
+    /// assert_eq!(lvl, SignificanceLevel::Test);
+    /// ```
+    pub fn event(&self) -> Result<EventCode, UnrecognizedEventCode> {
+        EventCode::try_from(self.event_str())
     }
 
     /// Event code
@@ -518,9 +570,27 @@ fn check_header(hdr: &str) -> Result<(usize, usize), MessageDecodeErr> {
     Ok((mtc.start(), mtc.end()))
 }
 
+// Get last character of the given ASCII string
+//
+// The last byte of `s` must be valid UTF-8. Returns reference
+// to the last byte.
+fn last_ascii_character<'a>(s: &'a str) -> Option<&'a str> {
+    if s.is_empty() {
+        None
+    } else {
+        s.get((s.len() - 1)..s.len())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_last_ascii_character() {
+        assert_eq!(last_ascii_character("XXXW"), Some("W"));
+        assert_eq!(last_ascii_character(""), None);
+    }
 
     #[test]
     fn test_check_header() {
@@ -550,6 +620,7 @@ mod tests {
             .expect("bad msg");
 
         assert_eq!(msg.originator_str(), "WXR");
+        assert_eq!(Originator::WeatherService, msg.originator());
         assert_eq!(msg.event_str(), "EEE");
         assert_eq!(msg.valid_duration_str(), "0351");
         assert_eq!(msg.valid_duration(), (3, 51));
