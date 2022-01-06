@@ -490,10 +490,11 @@ fn message_prefix_errors(inp: u32) -> u32 {
 
 // True if the burst starts with the EOM sequence
 fn message_prefix_is_eom(inp: &[u8]) -> bool {
-    match std::str::from_utf8(inp) {
-        Ok(s) => s.starts_with("NNNN"),
-        _ => false,
+    if inp.len() < 4 {
+        return false;
     }
+
+    &inp[0..4] == ['N' as u8, 'N' as u8, 'N' as u8, 'N' as u8]
 }
 
 // Two-of-three bit voting
@@ -617,7 +618,11 @@ mod tests {
     #[test]
     fn test_message_prefix_is_eom() {
         assert!(!message_prefix_is_eom(&[]));
+        assert!(!message_prefix_is_eom("NNN".as_bytes()));
         assert!(message_prefix_is_eom("NNNNzzzz!".as_bytes()));
+        assert!(message_prefix_is_eom(&[
+            'N' as u8, 'N' as u8, 'N' as u8, 'N' as u8, 10, 0
+        ]));
     }
 
     #[test]
