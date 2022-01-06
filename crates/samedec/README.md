@@ -172,22 +172,32 @@ broken.
 >     samedec -r 22050
 > ```
 >
-> should produce one output message per line:
+> should produce the following output:
 >
 > ```txt
 > ZCZC-EAS-RWT-012057-012081-012101-012103-012115+0030-2780415-WTSP/TV-
+> NNNN
+> NNNN
 > NNNN
 > ```
 
 When `samedec` receives a SAME message, the message is printed to stdout. The
 printout uses the SAME ASCII encoding that is transmitted over the air.
 
-Exactly one message is printed per line. Only messages are printed. SAME headers
-which indicate the beginning of a message are prefixed with `ZCZC`. Some
-validation is performed to ensure that headers have the correct format, but they
-may still contain invalid dates or unknown event codes.
+Exactly one message is printed per line. Only messages are printed. SAME
+*headers* which indicate the beginning of a message are prefixed with `ZCZC`.
+Some validation is performed to ensure that headers have the correct format, but
+they may still contain invalid dates or unknown event codes.
 
-SAME trailers which indicate the end of message are output as `NNNN`.
+SAME messages are always transmitted three times for redundancy. When decoding
+the message header, `samedec` will use all three transmissions together to
+improve decoding. Only one line will be output for the `ZCZC` header.
+
+SAME *trailers* which indicate the end of message are output as `NNNN`. The
+trailers are not subject to the same error-correction process as the headers.
+All trailers which successfully decode will print an `NNNN` line. Up to three
+of these lines will be printed per SAME message. This decoding strategy permits
+end of message to be detected more quickly.
 
 [`dsame`](https://github.com/cuppa-joe/dsame)
 is a python decoder which can produce human-readable text from this output.
