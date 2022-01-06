@@ -392,7 +392,11 @@ impl From<&SameReceiverBuilder> for SameReceiver {
             eqcfg.regularization(),
             Some(crate::waveform::PREAMBLE_SYNC_WORD),
         );
-        let framer = Framer::new(cfg.frame_prefix_max_errors(), cfg.frame_max_invalid());
+        let framer = Framer::new(
+            cfg.frame_prefix_max_errors(),
+            cfg.frame_max_invalid(),
+            cfg.fast_end_of_message(),
+        );
 
         let samples_until_next_ted = symsync.samples_per_ted();
 

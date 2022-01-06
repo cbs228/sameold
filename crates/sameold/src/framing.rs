@@ -63,6 +63,9 @@ pub struct Framer {
 
     // exit data read after this many uncorrected byte errors
     max_invalid_bytes: u32,
+
+    // emit an EndOfMessage as soon as the first `NNNN` burst is decoded
+    fast_eom: bool,
 }
 
 /// SAME/EAS Receiver Status
@@ -132,13 +135,21 @@ impl Framer {
     ///   carrier in between bursts. This can be a problem if the
     ///   synchronization mechanism (i.e., `CodeAndPowerSquelch`)
     ///   won't re-sync during a frame.
-    pub fn new(max_prefix_bit_errors: u32, max_invalid_bytes: u32) -> Self {
+    ///
+    /// If `fast_eom` is true, the framer will emit a
+    /// [crate::Message::EndOfMessage] as soon as the first `NNNN`
+    /// end-of-message burst is received, without waiting for
+    /// follow-on bursts and parity correction. When set, the `Framer`
+    /// may emit up to three `EndOfMessage` per complete SAME
+    /// audio message.
+    pub fn new(max_prefix_bit_errors: u32, max_invalid_bytes: u32, fast_eom: bool) -> Self {
         Self {
             bursts: MessageTriple::new(),
             state: State::Idle,
             symbol_count_last_burst: 0,
             max_prefix_bit_errors,
             max_invalid_bytes,
+            fast_eom,
         }
     }
 
@@ -271,6 +282,9 @@ impl Framer {
                 if self.bursts.is_full() {
                     // got three bursts; try to frame them
                     FrameOut::Ready(try_recover_message(&mut self.bursts))
+                } else if self.fast_eom && message_prefix_is_eom(self.bursts.back().unwrap()) {
+                    // in fast_eom mode, we report every NNNN burst received immediately
+                    FrameOut::Ready(Ok(Message::EndOfMessage))
                 } else {
                     FrameOut::NoCarrier
                 }
@@ -474,6 +488,14 @@ fn message_prefix_errors(inp: u32) -> u32 {
     u32::min(err_start, err_end)
 }
 
+// True if the burst starts with the EOM sequence
+fn message_prefix_is_eom(inp: &[u8]) -> bool {
+    match std::str::from_utf8(inp) {
+        Ok(s) => s.starts_with("NNNN"),
+        _ => false,
+    }
+}
+
 // Two-of-three bit voting
 //
 // Assume b0…b2 are multiple repetitions of the
@@ -593,6 +615,12 @@ mod tests {
     }
 
     #[test]
+    fn test_message_prefix_is_eom() {
+        assert!(!message_prefix_is_eom(&[]));
+        assert!(message_prefix_is_eom("NNNNzzzz!".as_bytes()));
+    }
+
+    #[test]
     fn test_arrayvec() {
         let mut m = Burst::new();
         m.push(1);
@@ -606,7 +634,7 @@ mod tests {
     fn test_framer_prefix() {
         const DATA: &[u8] = &['N' as u8, 'N' as u8, 'N' as u8, 'N' as u8];
 
-        let mut framer = Framer::new(1, 10);
+        let mut framer = Framer::new(1, 10, false);
 
         // we give up if too many preamble bytes are received
         let mut gave_up = false;
@@ -649,7 +677,7 @@ mod tests {
         const MAX_LEN_THREE: usize = 3 * MAX_MESSAGE_LENGTH;
 
         // if we provide a *bunch* of "N", this decodes as end of message
-        let mut framer = Framer::new(1, 10);
+        let mut framer = Framer::new(1, 10, false);
 
         for i in 0..MAX_LEN_THREE {
             let out = framer.input('N' as u8, 0, i == 0);
@@ -674,7 +702,7 @@ mod tests {
         const PERMIT_INVALID: u32 = 10;
 
         let mut found = false;
-        let mut framer = Framer::new(2, PERMIT_INVALID);
+        let mut framer = Framer::new(2, PERMIT_INVALID, false);
         for i in 0..3 {
             // preamble turns the framer on
             framer.input(crate::waveform::PREAMBLE, 0, true);
@@ -720,7 +748,7 @@ mod tests {
         // and start over
         const MESSAGE: &str = "ZCZC-ORG-EEE-012345-567890+0000-0001122-NOCALL00-";
 
-        let mut framer = Framer::new(2, 10);
+        let mut framer = Framer::new(2, 10, false);
         for _i in 0..2 {
             // preamble turns the framer on
             framer.input(crate::waveform::PREAMBLE, 0, true);
@@ -743,5 +771,40 @@ mod tests {
             true,
         );
         assert_eq!(0, framer.bursts.len());
+    }
+
+    #[test]
+    fn test_framer_fast_eom() {
+        const MESSAGE: &str = "NNNNZZZ";
+
+        // test "slow EOM" mode
+        {
+            let mut framer = Framer::new(2, 10, false);
+
+            // preamble turns the framer on
+            framer.input(crate::waveform::PREAMBLE, 0, true);
+
+            // read bytes
+            for c in MESSAGE.as_bytes() {
+                assert!(framer.input(*c, 0, false).is_active());
+            }
+
+            // manually end; nothing happens
+            assert_eq!(FrameOut::NoCarrier, framer.end(0));
+        }
+
+        // test "fast EOM" mode
+        {
+            let mut framer = Framer::new(2, 10, true);
+
+            framer.input(crate::waveform::PREAMBLE, 0, true);
+
+            for c in MESSAGE.as_bytes() {
+                assert!(framer.input(*c, 0, false).is_active());
+            }
+
+            // manually end; get EOM
+            assert_eq!(FrameOut::Ready(Ok(Message::EndOfMessage)), framer.end(0));
+        }
     }
 }

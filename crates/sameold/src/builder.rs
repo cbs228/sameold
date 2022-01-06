@@ -35,6 +35,7 @@ pub struct SameReceiverBuilder {
     equalizer: Option<EqualizerBuilder>,
     frame_prefix_max_errors: u32,
     frame_max_invalid_bytes: u32,
+    fast_eom: bool,
 }
 
 impl SameReceiverBuilder {
@@ -63,6 +64,7 @@ impl SameReceiverBuilder {
             equalizer: Some(EqualizerBuilder::default()),
             frame_prefix_max_errors: 2,
             frame_max_invalid_bytes: 5,
+            fast_eom: false,
         }
     }
 
@@ -278,6 +280,32 @@ impl SameReceiverBuilder {
         self
     }
 
+    /// Fast End-of-Message (EOM) Framing
+    ///
+    /// By default, with `fast_eom` set to false, the framer uses
+    /// the same strategy to output an
+    /// [`EndOfMessage`](crate::Message::EndOfMessage) as it does
+    /// for a [`StartOfMessage`](crate::Message::StartOfMessage):
+    /// the framer waits until all three bursts have been received
+    /// and successfully decoded/parity-checked before outputting
+    /// anything.
+    ///
+    /// With `fast_eom` set to true, the framer will output an
+    /// `EndOfMessage` whenever any data burst starting with
+    /// "`NNNN`" successfully decodes. This will result in up
+    /// to *three* `EndOfMessage` being output for each SAME
+    /// audio message. It may also result in spurious
+    /// `EndOfMessage` outputs from program audio erroneously
+    /// tripping the decoder.
+    ///
+    /// When set, this flag permits faster detection of the end
+    /// of message. This allows audio playback or storage of the
+    /// voice message to end sooner.
+    pub fn with_fast_end_of_message(&mut self, fast_eom: bool) -> &mut Self {
+        self.fast_eom = fast_eom;
+        self
+    }
+
     /// Input sampling rate (Hz)
     pub fn input_rate(&self) -> u32 {
         self.input_rate
@@ -346,6 +374,11 @@ impl SameReceiverBuilder {
     /// Maximum frame invalid bytes
     pub fn frame_max_invalid(&self) -> u32 {
         self.frame_max_invalid_bytes
+    }
+
+    /// Fast End-of-Message (EOM) Framing
+    pub fn fast_end_of_message(&self) -> bool {
+        self.fast_eom
     }
 }
 
