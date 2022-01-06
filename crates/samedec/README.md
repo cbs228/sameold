@@ -189,6 +189,13 @@ may still contain invalid dates or unknown event codes.
 
 SAME trailers which indicate the end of message are output as `NNNN`.
 
+SAME messages are always transmitted three times for redundancy. `samedec` will
+use all three transmissions, together, to improve decoding. Normally, only one
+line will be output for each header or trailer. When the `--fast-eom` option is
+set, `samedec` won't wait for all three repetitions of the trailer. All trailers
+which successfully decode will print an `NNNN` line. This option permits you to
+detect the end of the message more quickly than the default setting.
+
 [`dsame`](https://github.com/cuppa-joe/dsame)
 is a python decoder which can produce human-readable text from this output.
 The [`sameold`](https://crates.io/crates/sameold) crate also understands how to

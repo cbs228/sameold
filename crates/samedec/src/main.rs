@@ -99,6 +99,12 @@ fn main() {
                 .help("Issue demo warning (DMO) and exit"),
         )
         .arg(
+            Arg::with_name("fast_eom")
+                .long("fast-eom")
+                .takes_value(false)
+                .help("Output one \"NNNN\" for each EOM received. Ends child processes sooner."),
+        )
+        .arg(
             Arg::with_name("dc-blocker-len")
                 .long("dc-blocker-len")
                 .help("DC Blocker filter length (fsym)")
@@ -205,6 +211,7 @@ fn main() {
             str::parse(matches.value_of("preamble-max-errors").unwrap())
                 .expect("--preamble-max-errors: expect integer"),
         )
+        .with_fast_end_of_message(matches.occurrences_of("fast_eom") >= 1)
         .build();
 
     // file setup: locks stdin in case we need it
