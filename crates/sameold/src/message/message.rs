@@ -468,10 +468,7 @@ impl MessageHeader {
 
 impl fmt::Display for Message {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Message::StartOfMessage(msg) => msg.fmt(f),
-            Message::EndOfMessage => PREFIX_MESSAGE_END.fmt(f),
-        }
+        self.as_str().fmt(f)
     }
 }
 
@@ -489,7 +486,7 @@ impl TryFrom<String> for Message {
     fn try_from(inp: String) -> Result<Self, Self::Error> {
         if inp.starts_with(PREFIX_MESSAGE_START) {
             Ok(Message::StartOfMessage(MessageHeader::try_from(inp)?))
-        } else if inp.starts_with(PREFIX_MESSAGE_END) {
+        } else if inp.starts_with(&PREFIX_MESSAGE_END[0..2]) {
             Ok(Message::EndOfMessage)
         } else {
             Err(MessageDecodeErr::UnrecognizedPrefix)
@@ -504,7 +501,7 @@ impl TryFrom<(String, &[u8])> for Message {
     fn try_from(inp: (String, &[u8])) -> Result<Self, Self::Error> {
         if inp.0.starts_with(PREFIX_MESSAGE_START) {
             Ok(Message::StartOfMessage(MessageHeader::try_from(inp)?))
-        } else if inp.0.starts_with(PREFIX_MESSAGE_END) {
+        } else if inp.0.starts_with(&PREFIX_MESSAGE_END[0..2]) {
             Ok(Message::EndOfMessage)
         } else {
             Err(MessageDecodeErr::UnrecognizedPrefix)
@@ -737,5 +734,8 @@ mod tests {
         let msg = Message::try_from("NNNN".to_owned()).expect("bad msg");
         assert_eq!(Message::EndOfMessage, msg);
         assert_eq!("NNNN", &format!("{}", msg));
+
+        let msg = Message::try_from("NN".to_owned()).expect("bad msg");
+        assert_eq!(Message::EndOfMessage, msg);
     }
 }

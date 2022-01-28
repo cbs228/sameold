@@ -37,14 +37,16 @@ SAME messages.
 The child process receives the following additional environment
 variables which describe the message:
 
+  SAMEDEC_RATE="22050" (configured sample --rate)
   SAMEDEC_MSG="ZCZC-EAS-RWT-012057-012081+0030-2780415-WTSP/TV-"
+  SAMEDEC_ORG="EAS" (or CIV,NWS,PEP)
   SAMEDEC_ORIGINATOR="EAS Participant"
   SAMEDEC_EVT="RWT"
   SAMEDEC_EVENT="Required Weekly Test"
   SAMEDEC_SIGNIFICANCE="T" (or M,S,E,A,W)
   SAMEDEC_LOCATIONS="012057 012081"
-  SAMEDEC_ISSUETIME="1616883240" (UTC UNIX timesamp)
-  SAMEDEC_PURGETIME="1616886840" (UTC UNIX timesamp)
+  SAMEDEC_ISSUETIME="1616883240" (UTC UNIX timestamp)
+  SAMEDEC_PURGETIME="1616886840" (UTC UNIX timestamp)
 
 Child processes MUST read or close standard input.
 Child processes MUST exit when their standard input is closed.

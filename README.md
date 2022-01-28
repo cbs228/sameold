@@ -1,4 +1,4 @@
-[binary](https://crates.io/crates/samedec) | [library](https://crates.io/crates/sameold) | [api docs](https://docs.rs/sameold/latest/chrono/sameold)
+[binary](https://crates.io/crates/samedec) | [library](https://crates.io/crates/sameold) | [api docs](https://docs.rs/sameold/latest/sameold)
 
 # sameold: SAME/EAS Demodulation
 
@@ -60,11 +60,11 @@ Add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-sameold = "0.1"
+sameold = "0.2"
 ```
 
 Then read our
-[API documentation](https://docs.rs/sameold/latest/chrono/sameold).
+[API documentation](https://docs.rs/sameold/latest/sameold).
 
 ## Contributing
 

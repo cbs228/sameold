@@ -73,8 +73,11 @@ where
 
         let mut alerting = State::<Alerting>::from(dmo);
         alerting.until_message_end(&cfg, receiver, &mut input.take(duration_message));
-        alerting = State::<Alerting>::from(Message::EndOfMessage);
-        alerting.until_message_end(&cfg, receiver, &mut std::iter::once(0i16));
+
+        for _i in 0..3 {
+            alerting = State::<Alerting>::from(Message::EndOfMessage);
+            alerting.until_message_end(&cfg, receiver, &mut std::iter::once(0i16));
+        }
     } else {
         // live mode: look for messages in a loop
         let mut waiting = State::<Waiting>::new();

@@ -47,7 +47,7 @@ use sameold::{FrameOut, Message, SameReceiverBuilder};
 // Create a SameReceiver with your audio sampling rate
 // Sound cards typically run at 44100 Hz or 48000 Hz. Use
 // an input rate of at least 8000 Hz.
-let mut rx = SameReceiverBuilder::new(22050)
+let mut rx = SameReceiverBuilder::new(48000)
     .with_agc_bandwidth(0.05)        // AGC bandwidth at symbol rate, < 1.0
     .with_agc_gain_limits(1.0/(i16::MAX as f32), 1.0/200.0)  // for i16
     .with_squelch_power(0.10, 0.05)  // squelch open/close power, 0.0 < power < 1.0
@@ -56,7 +56,7 @@ let mut rx = SameReceiverBuilder::new(22050)
 
 // let audiosrc be an iterator which outputs audio samples,
 // such as a BufReader bound to stdin or a file, in f32
-// format at the sampling rate (here 22050 Hz)
+// format at the sampling rate (here 48000 Hz)
 let audiosrc = some_audio_source_iterator();
 for msg in rx.iter_messages(audiosrc) {
     match msg {
@@ -97,8 +97,9 @@ should contain a voice message that
 * describes the event; and
 * provides instructions to the listener.
 
-This crate decodes the digital headers which summarize the message.
-An example header, as received "off the wire" in ASCII format, is:
+This crate decodes the digital headers and trailers which summarize
+the message. An example header, as received "off the wire" in ASCII
+format, is:
 
 ```txt
 ZCZC-WXR-RWT-012345-567890-888990+0015-0321115-KLOX/NWS-
@@ -127,6 +128,15 @@ assert!(SignificanceLevel::Test < SignificanceLevel::Warning);
 let first_location = hdr.location_str_iter().next();
 assert_eq!(Some("012345"), first_location);
 ```
+
+SAME messages are always transmitted three times for redundancy.
+When decoding the message header, `sameold` will use all three
+transmissions together to improve decoding. Only one
+[`Message::StartOfMessage`] is output for all three header transmissions.
+The trailers which denote the end of the message are **not** subject to
+this error-correction process. One [`Message::EndOfMessage`] is
+output for every trailer received. There may be up to three
+`EndOfMessage` output for every complete SAME message.
 
 ## Background
 

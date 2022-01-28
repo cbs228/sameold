@@ -271,6 +271,9 @@ impl Framer {
                 if self.bursts.is_full() {
                     // got three bursts; try to frame them
                     FrameOut::Ready(try_recover_message(&mut self.bursts))
+                } else if message_prefix_is_eom(self.bursts.back().unwrap()) {
+                    // fast EOM: we report every NNNN burst received immediately
+                    FrameOut::Ready(Ok(Message::EndOfMessage))
                 } else {
                     FrameOut::NoCarrier
                 }
@@ -474,6 +477,15 @@ fn message_prefix_errors(inp: u32) -> u32 {
     u32::min(err_start, err_end)
 }
 
+// True if the burst starts with the EOM sequence
+fn message_prefix_is_eom(inp: &[u8]) -> bool {
+    if inp.len() < 2 {
+        return false;
+    }
+
+    &inp[0..2] == ['N' as u8, 'N' as u8]
+}
+
 // Two-of-three bit voting
 //
 // Assume b0…b2 are multiple repetitions of the
@@ -593,6 +605,14 @@ mod tests {
     }
 
     #[test]
+    fn test_message_prefix_is_eom() {
+        assert!(!message_prefix_is_eom(&[]));
+        assert!(!message_prefix_is_eom("NZK".as_bytes()));
+        assert!(message_prefix_is_eom("NNNNzzzz!".as_bytes()));
+        assert!(message_prefix_is_eom(&['N' as u8, 'N' as u8, 5, 11, 10, 0]));
+    }
+
+    #[test]
     fn test_arrayvec() {
         let mut m = Burst::new();
         m.push(1);
@@ -604,7 +624,7 @@ mod tests {
 
     #[test]
     fn test_framer_prefix() {
-        const DATA: &[u8] = &['N' as u8, 'N' as u8, 'N' as u8, 'N' as u8];
+        const DATA: &[u8] = &['Z' as u8, 'C' as u8, 'Z' as u8, 'C' as u8];
 
         let mut framer = Framer::new(1, 10);
 
@@ -655,8 +675,10 @@ mod tests {
             let out = framer.input('N' as u8, 0, i == 0);
             if i > 0 && i % MAX_MESSAGE_LENGTH == 0 {
                 // expect carrier drop because buffer is full
+                // but we declare EOM since we got enough N.
+                assert_eq!(out, FrameOut::Ready(Ok(Message::EndOfMessage)));
+
                 // restart it
-                assert_eq!(out, FrameOut::NoCarrier);
                 framer.input('N' as u8, 0, true);
                 continue;
             }
@@ -743,5 +765,22 @@ mod tests {
             true,
         );
         assert_eq!(0, framer.bursts.len());
+    }
+
+    #[test]
+    fn test_framer_fast_eom() {
+        // EOM with two bit errors
+        const MESSAGE: &str = "NNLLZZ";
+
+        let mut framer = Framer::new(2, 10);
+
+        framer.input(crate::waveform::PREAMBLE, 0, true);
+
+        for c in MESSAGE.as_bytes() {
+            assert!(framer.input(*c, 0, false).is_active());
+        }
+
+        // manually end; get EOM
+        assert_eq!(FrameOut::Ready(Ok(Message::EndOfMessage)), framer.end(0));
     }
 }
