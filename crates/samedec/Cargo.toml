@@ -11,8 +11,12 @@ readme = "README.md"
 
 [dependencies]
 sameold = {path = "../sameold", version = "0.2.1"}
-chrono = "^0.4"
 byteorder = "^1.4"
 clap = "^2.33"
 log = "^0.4"
 pretty_env_logger = "^0.4"
+
+[dependencies.chrono]
+version = "^0.4"
+default-features = false
+features = ["clock", "std"]
