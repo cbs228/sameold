@@ -1,7 +1,7 @@
 [package]
 name = "samedec"
 description = "A SAME/EAS digital receiver and alerting program"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Colin S <3526918+cbs228@users.noreply.github.com>"]
 license = "MIT OR Apache-2.0"
 edition = "2018"
@@ -11,8 +11,12 @@ readme = "README.md"
 
 [dependencies]
 sameold = {path = "../sameold", version = "0.2.1"}
-chrono = "^0.4"
 byteorder = "^1.4"
 clap = "^2.33"
 log = "^0.4"
 pretty_env_logger = "^0.4"
+
+[dependencies.chrono]
+version = "^0.4"
+default-features = false
+features = ["clock", "std"]
