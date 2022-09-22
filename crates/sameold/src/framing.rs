@@ -517,9 +517,13 @@ fn bit_vote_parity(b0: u8, b1: u8, b2: u8) -> (u8, u32) {
 //
 // Allowed characters include the following ASCII:
 // - Uppercase letters
+// - Lowercase letters
 // - Numbers
 // - Minus sign (`-`)
 // - Plus sign (`+`)
+// - Question mark (`?`)
+// - Open parentheses (`(`)
+// - Close parentheses (`)`)
 // - Slash (`/`)
 // - Space (` `)(might be encountered in callsign field)
 //
@@ -530,15 +534,23 @@ fn bit_vote_parity(b0: u8, b1: u8, b2: u8) -> (u8, u32) {
 fn is_allowed_byte(c: u8) -> bool {
     const MINUS: u8 = '-' as u8;
     const PLUS: u8 = '+' as u8;
+    const QUESTION_MARK: u8 = '?' as u8;
+    const OPEN_PARENTHESES: u8 = '(' as u8;
+    const CLOSE_PARENTHESES: u8 = ')' as u8;
     const SLASH: u8 = '/' as u8;
     const SPACE: u8 = ' ' as u8;
     const NUMBERS: [u8; 2] = ['0' as u8, '9' as u8];
     const UPPER_ALPHA: [u8; 2] = ['A' as u8, 'Z' as u8];
+    const LOWER_ALPHA: [u8; 2] = ['a' as u8, 'z' as u8];
 
     c == MINUS
         || (c >= NUMBERS[0] && c <= NUMBERS[1])
         || (c >= UPPER_ALPHA[0] && c <= UPPER_ALPHA[1])
+        || (c >= LOWER_ALPHA[0] && c <= LOWER_ALPHA[1])
         || c == SLASH
+        || c == QUESTION_MARK
+        || c == OPEN_PARENTHESES
+        || c == CLOSE_PARENTHESES
         || c == PLUS
         || c == SPACE
 }
