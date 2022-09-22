@@ -524,6 +524,8 @@ fn bit_vote_parity(b0: u8, b1: u8, b2: u8) -> (u8, u32) {
 // - Question mark (`?`)
 // - Open parentheses (`(`)
 // - Close parentheses (`)`)
+// - Period (`.`)
+// - Comma (`,`)
 // - Slash (`/`)
 // - Space (` `)(might be encountered in callsign field)
 //
@@ -537,6 +539,8 @@ fn is_allowed_byte(c: u8) -> bool {
     const QUESTION_MARK: u8 = '?' as u8;
     const OPEN_PARENTHESES: u8 = '(' as u8;
     const CLOSE_PARENTHESES: u8 = ')' as u8;
+    const PERIOD: u8 = '.' as u8;
+    const COMMA: u8 = ',' as u8;
     const SLASH: u8 = '/' as u8;
     const SPACE: u8 = ' ' as u8;
     const NUMBERS: [u8; 2] = ['0' as u8, '9' as u8];
@@ -551,6 +555,8 @@ fn is_allowed_byte(c: u8) -> bool {
         || c == QUESTION_MARK
         || c == OPEN_PARENTHESES
         || c == CLOSE_PARENTHESES
+        || c == PERIOD
+        || c == COMMA
         || c == PLUS
         || c == SPACE
 }
