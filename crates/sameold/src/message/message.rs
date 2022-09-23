@@ -569,7 +569,7 @@ const PREFIX_MESSAGE_END: &str = "NNNN";
 fn check_header(hdr: &str) -> Result<(usize, usize), MessageDecodeErr> {
     lazy_static! {
         static ref RE: Regex =
-            Regex::new(r"^ZCZC-[A-Z]{3}-[A-Z]{3}(-[0-9]{6})+(\+[0-9]{4}-[0-9]{7}-.{3,8}-)")
+            Regex::new(r"^ZCZC-[[:alpha:]]{3}-[[:alpha:]]{3}(-[0-9]{6})+(\+[0-9]{4}-[0-9]{7}-.{3,8}-)")
                 .expect("bad SAME regexp");
     }
 
