@@ -269,7 +269,7 @@ impl From<State<Alerting>> for State<Waiting> {
 
 // Create a demonstration message
 fn make_demo_message(at: &DateTime<Utc>) -> Message {
-    let msg_string = format!("ZCZC-EAS-DMO-999000+0015-{}-N0CALL-", at.format("%j%H%M"));
+    let msg_string = format!("ZCZC-EAS-DMO-999000+0015-{}-N0 CALL -", at.format("%j%H%M"));
     Message::StartOfMessage(MessageHeader::new(msg_string).expect("unable to create DMO message"))
 }
 
