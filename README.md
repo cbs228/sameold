@@ -40,6 +40,12 @@ alerts.
 
 ## Getting Started
 
+### Binaries
+
+Binary builds are available on the [releases](./releases) page for a variety of
+platforms. Linux binaries are currently built against glibc 2.28 and should be
+portable to most distros.
+
 ### Building
 
 You will need a working
