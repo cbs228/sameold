@@ -86,7 +86,7 @@ You will need a way to pipe audio from your soundcard into `samedec`. You can
 install [`sox`](http://sox.sourceforge.net/) on most platforms:
 
 ```bash
-rec -q -t raw -r 22.5k -e signed -b 16 -c 1 - | samedec --rate 22050
+rec -q -t raw -r 22.05k -e signed -b 16 -c 1 - | samedec --rate 22050
 ```
 
 `samedec` takes input as 1-channel (mono), signed 16-bit integers, in
@@ -168,7 +168,7 @@ broken.
 > from Wikimedia Commons. Running:
 >
 > ```bash
-> sox 'Same.wav' -t raw -r 22.5k -e signed -b 16 -c 1 - | \
+> sox 'Same.wav' -t raw -r 22.05k -e signed -b 16 -c 1 - | \
 >     samedec -r 22050
 > ```
 >
@@ -207,7 +207,7 @@ parse message fields.
 ## Child Processes
 
 > ```bash
-> … | samedec -r 22050 -- play -q -t raw -r 22.5k -e signed -b 16 -c 1 -
+> … | samedec -r 22050 -- play -q -t raw -r 22.05k -e signed -b 16 -c 1 -
 > ```
 >
 > `samedec` can spawn child processes to handle message audio.
@@ -345,7 +345,7 @@ If you name this script `./play_on_warn.sh`, then an example invocation of
 `samedec` is:
 
 ```bash
-sox 'Same.wav' -t raw -r 22.5k -e signed -b 16 -c 1 - | \
+sox 'Same.wav' -t raw -r 22.05k -e signed -b 16 -c 1 - | \
   samedec -r 22050 -- ./play_on_warn.sh
 ```
 
@@ -363,7 +363,7 @@ exec sox -q -t raw -r "${SAMEDEC_RATE}" -e signed -b 16 -c 1 - \
 Example invocation, assuming the script is named `./save.sh`.
 
 ```bash
-sox 'Same.wav' -t raw -r 22.5k -e signed -b 16 -c 1 - | \
+sox 'Same.wav' -t raw -r 22.05k -e signed -b 16 -c 1 - | \
   samedec -r 22050 -- ./save.sh
 ```
 
