@@ -108,6 +108,13 @@ jobs:
         file: install/bin/samedec-${{ matrix.rust }}
         overwrite: true
 
+    - name: Update tag for nightly release
+      uses: richardsimko/update-tag@v1
+      with:
+        tag_name: latest
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
     - name: Upload nightly release
       uses: svenstaro/upload-release-action@v2
       if: github.ref == 'refs/heads/develop'
