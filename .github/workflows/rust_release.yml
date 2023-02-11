@@ -110,6 +110,7 @@ jobs:
 
     - name: Update tag for nightly release
       uses: richardsimko/update-tag@v1
+      if: github.ref == 'refs/heads/develop'
       with:
         tag_name: latest
       env:
