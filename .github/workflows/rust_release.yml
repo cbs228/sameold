@@ -110,7 +110,7 @@ jobs:
       if: github.ref == 'refs/heads/develop'
       with:
         tag: "latest"
-        name: "Nightly Release"
+        release_name: "Nightly Release"
         body: "This is a rolling release built from the latest `develop` branch."
         prerelease: true
         file: install/bin/samedec-${{ matrix.rust }}
@@ -197,7 +197,7 @@ jobs:
       if: github.ref == 'refs/heads/develop'
       with:
         tag: "latest"
-        name: "Nightly Release"
+        release_name: "Nightly Release"
         body: "This is a rolling release built from the latest `develop` branch."
         prerelease: true
         file: ${{ env.samedec_target_exe }}
@@ -279,7 +279,7 @@ jobs:
       if: github.ref == 'refs/heads/develop'
       with:
         tag: "latest"
-        name: "Nightly Release"
+        release_name: "Nightly Release"
         body: "This is a rolling release built from the latest `develop` branch."
         prerelease: true
         file: ${{ env.samedec_target_exe }}
