@@ -86,7 +86,7 @@ You will need a way to pipe audio from your soundcard into `samedec`. You can
 install [`sox`](http://sox.sourceforge.net/) on most platforms:
 
 ```bash
-rec -q -t raw -r 22.5k -e signed -b 16 -c 1 - | samedec --rate 22050
+rec -q -t raw -r 22.05k -e signed -b 16 -c 1 - | samedec --rate 22050
 ```
 
 `samedec` takes input as 1-channel (mono), signed 16-bit integers, in
@@ -168,7 +168,7 @@ broken.
 > from Wikimedia Commons. Running:
 >
 > ```bash
-> sox 'Same.wav' -t raw -r 22.5k -e signed -b 16 -c 1 - | \
+> sox 'Same.wav' -t raw -r 22.05k -e signed -b 16 -c 1 - | \
 >     samedec -r 22050
 > ```
 >
@@ -207,7 +207,7 @@ parse message fields.
 ## Child Processes
 
 > ```bash
-> … | samedec -r 22050 -- play -q -t raw -r 22.5k -e signed -b 16 -c 1 -
+> … | samedec -r 22050 -- play -q -t raw -r 22.05k -e signed -b 16 -c 1 -
 > ```
 >
 > `samedec` can spawn child processes to handle message audio.
@@ -220,14 +220,13 @@ executable bit be set. The remaining arguments will be passed to the executable,
 verbatim, without further interpretation by `samedec`.
 
 One child process is spawned per SAME message received. The child is spawned
-just as soon as `samedec` finishes decoding the SAME header, and it will run
-until `samedec` receives a SAME end-of-message.
+just as soon as `samedec` finishes decoding the SAME header.
 
-The child process will receive "passthrough" message audio on its standard
-input. Input samples which are provided to `samedec` will be provided to the
-child process, verbatim, at the input rate. The entire SAME message will be
-streamed to the child process. At the conclusion of the message, the child
-process standard input is closed.
+Child processes receive "passthrough" voice message audio via their standard
+input. Input samples which are provided to `samedec` are streamed to the child
+process, verbatim, at the input `--rate`. At the conclusion of the voice
+message, the child process standard input is closed. Further progress is blocked
+until the child terminates.
 
 The example above will play any SAME message received on your system speakers,
 via sox's `play` command.
@@ -281,7 +280,7 @@ The child process receives the following additional environment variables:
   * Since the full issuance time is not present in the message, the
     `samedec` program assumes that the message was received approximately "now,"
     where "now" is determined by your system's real-time clock.
-  * Replays of historical messages are **NOT** guaranteed to yield the same  
+  * Replays of historical messages are **NOT** guaranteed to yield the same
     value.
 
 * `SAMEDEC_PURGETIME`: The message purge time, as a UTC UNIX timestamp, **IF**
@@ -306,6 +305,10 @@ Child processes should avoid starting long-running foreground jobs which might
 block for extended periods of time. The following sections provide examples
 which use `bash` scripting. You can use any language you want for the child
 process.
+
+The audio streamed to child processes **MAY** contain one or more SAME trailers
+(`NNNN`) which follow the voice message. To minimize latency, `samedec` does not
+attempt to remove these.
 
 ### Example: Ignoring the Input
 
@@ -342,7 +345,7 @@ If you name this script `./play_on_warn.sh`, then an example invocation of
 `samedec` is:
 
 ```bash
-sox 'Same.wav' -t raw -r 22.5k -e signed -b 16 -c 1 - | \
+sox 'Same.wav' -t raw -r 22.05k -e signed -b 16 -c 1 - | \
   samedec -r 22050 -- ./play_on_warn.sh
 ```
 
@@ -360,7 +363,7 @@ exec sox -q -t raw -r "${SAMEDEC_RATE}" -e signed -b 16 -c 1 - \
 Example invocation, assuming the script is named `./save.sh`.
 
 ```bash
-sox 'Same.wav' -t raw -r 22.5k -e signed -b 16 -c 1 - | \
+sox 'Same.wav' -t raw -r 22.05k -e signed -b 16 -c 1 - | \
   samedec -r 22050 -- ./save.sh
 ```
 

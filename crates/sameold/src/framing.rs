@@ -258,7 +258,7 @@ impl Framer {
         // if we're reading a frame, that frame is done
         match self.state {
             State::DataRead(ref mut msg, _) => {
-                info!("burst: ended: after {} bytes", msg.len());
+                info!("burst: ended: \"{}\"", String::from_utf8_lossy(msg));
 
                 // add to our list of completed bursts
                 self.symbol_count_last_burst = symbol_count;

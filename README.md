@@ -40,19 +40,42 @@ alerts.
 
 ## Getting Started
 
+### Binaries
+
+Binary builds are available on the [releases](./releases) page for a variety of
+platforms. Linux binaries are currently built against glibc 2.28 and should be
+portable to most distros.
+
+### Building
+
 You will need a working
 [rust toolchain](https://www.rust-lang.org/learn/get-started).
-
-### Use the executable
 
 To build and install binaries from this repository, run
 
 ```bash
 cargo install --path crates/samedec
+samedec --help
 ```
 
 Then see the binary's [README](./crates/samedec/README.md) for further
 instructions.
+
+### Containerized Build
+
+Containerized builds are available for any architecture supported by the
+official [`rust`](https://hub.docker.com/_/rust) image. This example uses
+`podman`, but similar commands exist in other container managers:
+
+```bash
+DOCKER_BUILDKIT=1 podman build . --tag samedec:latest
+podman run --rm -it --userns=keep-id samedec:latest
+```
+
+Arguments to `run` are `samedec` arguments. See the binary's
+[README](./crates/samedec/README.md) for additional documentation.
+
+Container binaries are not published at present.
 
 ### Add SAME decoding to your own project
 

@@ -67,7 +67,7 @@ use std::convert::AsRef;
 use nalgebra::base::Scalar;
 use nalgebra::DVector;
 use num_traits::{One, Zero};
-use slice_deque::SliceDeque;
+use slice_ring_buffer::SliceRingBuffer;
 
 /// FIR filter coefficients
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq)]
@@ -231,7 +231,7 @@ where
 /// Implements a fixed-size lookback window for FIR filters
 /// or other purposes.
 #[derive(Clone, Debug)]
-pub struct Window<T>(SliceDeque<T>)
+pub struct Window<T>(SliceRingBuffer<T>)
 where
     T: Copy + Scalar + Zero;
 
@@ -247,7 +247,7 @@ where
     pub fn new(len: usize) -> Self {
         assert!(len > 0);
 
-        let mut out = Self(SliceDeque::with_capacity(len));
+        let mut out = Self(SliceRingBuffer::with_capacity(len));
         for _i in 0..len {
             out.0.push_front(T::zero());
         }
@@ -311,8 +311,8 @@ where
         out
     }
 
-    /// Obtain the inner SliceDeque
-    pub fn inner(&self) -> &SliceDeque<T> {
+    /// Obtain the inner SliceRingBuffer
+    pub fn inner(&self) -> &SliceRingBuffer<T> {
         &self.0
     }
 
