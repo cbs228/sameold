@@ -383,7 +383,7 @@ checksum = "a3f87b73ce11b1619a3c6332f45341e0047173771e8b8b73f87bfeefb7b56244"
 
 [[package]]
 name = "samedec"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "byteorder",
  "chrono",
@@ -395,7 +395,7 @@ dependencies = [
 
 [[package]]
 name = "sameold"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "arraydeque",
  "arrayvec",
