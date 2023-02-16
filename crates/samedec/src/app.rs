@@ -277,12 +277,12 @@ fn make_demo_message(at: &DateTime<Utc>) -> Message {
 mod tests {
     use super::*;
 
-    use chrono::{Duration, TimeZone};
+    use chrono::{Duration, TimeZone, Utc};
     use sameold::EventCode;
 
     #[test]
     fn test_make_demo_message() {
-        let tm = Utc.ymd(2020, 12, 31).and_hms(23, 22, 00);
+        let tm = Utc.with_ymd_and_hms(2020, 12, 31, 23, 22, 00).unwrap();
         let msg = make_demo_message(&tm);
         let msg = match msg {
             Message::StartOfMessage(hdr) => hdr,

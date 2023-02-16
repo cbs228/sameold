@@ -4,7 +4,7 @@ use std::convert::TryFrom;
 use std::fmt;
 
 #[cfg(feature = "chrono")]
-use chrono::{DateTime, Datelike, Duration, TimeZone, Utc};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, TimeZone, Utc};
 use lazy_static::lazy_static;
 use regex::Regex;
 use thiserror::Error;
@@ -613,17 +613,31 @@ fn calculate_issue_time(
     };
 
     // construct a calendar date
-    Ok(Utc
-        .yo_opt(msg_year, day_of_year as u32)
-        .single()
-        .ok_or(InvalidDateErr {})?
-        .and_hms_opt(hour as u32, minute as u32, 0)
-        .ok_or(InvalidDateErr {})?)
+    yo_hms_to_utc(msg_year, day_of_year as u32, hour as u32, minute as u32, 0)
+        .ok_or(InvalidDateErr {})
+}
+
+// Create the latest-possible Utc date from year, ordinal, and HMS
+#[cfg(feature = "chrono")]
+#[inline]
+fn yo_hms_to_utc(
+    year: i32,
+    ordinal: u32,
+    hour: u32,
+    minute: u32,
+    second: u32,
+) -> Option<DateTime<Utc>> {
+    Some(Utc.from_utc_datetime(
+        &NaiveDate::from_yo_opt(year, ordinal)?.and_hms_opt(hour, minute, second)?,
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "chrono")]
+    use chrono::{TimeZone, Utc};
 
     #[test]
     fn test_check_header() {
@@ -647,26 +661,26 @@ mod tests {
     #[cfg(feature = "chrono")]
     fn test_calculate_issue_time() {
         let d = calculate_issue_time((83, 2, 53), (2021, 1)).unwrap();
-        assert_eq!(d, Utc.ymd(2021, 3, 24).and_hms(2, 53, 0));
+        assert_eq!(d, Utc.with_ymd_and_hms(2021, 3, 24, 2, 53, 0).unwrap());
 
         let d = calculate_issue_time((84, 23, 59), (2021, 1)).unwrap();
-        assert_eq!(d, Utc.ymd(2021, 3, 25).and_hms(23, 59, 0));
+        assert_eq!(d, Utc.with_ymd_and_hms(2021, 3, 25, 23, 59, 0).unwrap());
 
         // close to the current year
         let d = calculate_issue_time((1, 10, 00), (2021, 1)).unwrap();
-        assert_eq!(d, Utc.ymd(2021, 1, 1).and_hms(10, 00, 0));
+        assert_eq!(d, Utc.with_ymd_and_hms(2021, 1, 1, 10, 00, 0).unwrap());
 
         // bumps to next year
         let d = calculate_issue_time((1, 10, 00), (2021, 200)).unwrap();
-        assert_eq!(d, Utc.ymd(2022, 1, 1).and_hms(10, 00, 0));
+        assert_eq!(d, Utc.with_ymd_and_hms(2022, 1, 1, 10, 00, 0).unwrap());
 
         // this too
         let d = calculate_issue_time((1, 10, 00), (2021, 365)).unwrap();
-        assert_eq!(d, Utc.ymd(2022, 1, 1).and_hms(10, 00, 0));
+        assert_eq!(d, Utc.with_ymd_and_hms(2022, 1, 1, 10, 00, 0).unwrap());
 
         // reverts to previous year, with leap year support
         let d = calculate_issue_time((366, 10, 00), (2021, 1)).unwrap();
-        assert_eq!(d, Utc.ymd(2020, 12, 31).and_hms(10, 00, 0));
+        assert_eq!(d, Utc.with_ymd_and_hms(2020, 12, 31, 10, 00, 0).unwrap());
 
         // but this doesn't work at all if the year we propagate into
         // is not a leap year
@@ -707,18 +721,18 @@ mod tests {
         #[cfg(feature = "chrono")]
         {
             assert_eq!(
-                Utc.ymd(2020, 12, 31).and_hms(23, 22, 00),
-                msg.issue_datetime(&Utc.ymd(2020, 12, 31).and_hms(11, 30, 34))
+                Utc.with_ymd_and_hms(2020, 12, 31, 23, 22, 00).unwrap(),
+                msg.issue_datetime(&Utc.with_ymd_and_hms(2020, 12, 31, 11, 30, 34).unwrap())
                     .unwrap()
             );
             assert_eq!(
                 msg.valid_duration(),
                 Duration::hours(3) + Duration::minutes(51)
             );
-            assert!(!msg.is_expired_at(&Utc.ymd(2020, 12, 31).and_hms(23, 59, 0)));
-            assert!(!msg.is_expired_at(&Utc.ymd(2021, 1, 1).and_hms(1, 20, 30)));
-            assert!(!msg.is_expired_at(&Utc.ymd(2021, 1, 1).and_hms(3, 13, 00)));
-            assert!(msg.is_expired_at(&Utc.ymd(2021, 1, 1).and_hms(3, 13, 01)));
+            assert!(!msg.is_expired_at(&Utc.with_ymd_and_hms(2020, 12, 31, 23, 59, 0).unwrap()));
+            assert!(!msg.is_expired_at(&Utc.with_ymd_and_hms(2021, 1, 1, 1, 20, 30).unwrap()));
+            assert!(!msg.is_expired_at(&Utc.with_ymd_and_hms(2021, 1, 1, 3, 13, 00).unwrap()));
+            assert!(msg.is_expired_at(&Utc.with_ymd_and_hms(2021, 1, 1, 3, 13, 01).unwrap()));
         }
 
         // try again via Message
