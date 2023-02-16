@@ -568,9 +568,10 @@ const PREFIX_MESSAGE_END: &str = "NNNN";
 // 2. total length of the header. The `hdr` may be longer.
 fn check_header(hdr: &str) -> Result<(usize, usize), MessageDecodeErr> {
     lazy_static! {
-        static ref RE: Regex =
-            Regex::new(r"^ZCZC-[[:alpha:]]{3}-[[:alpha:]]{3}(-[0-9]{6})+(\+[0-9]{4}-[0-9]{7}-.{3,8}-)")
-                .expect("bad SAME regexp");
+        static ref RE: Regex = Regex::new(
+            r"^ZCZC-[[:alpha:]]{3}-[[:alpha:]]{3}(-[0-9]{6})+(\+[0-9]{4}-[0-9]{7}-.{3,8}-)"
+        )
+        .expect("bad SAME regexp");
     }
 
     let mtc = RE
