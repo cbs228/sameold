@@ -11,8 +11,10 @@ readme = "README.md"
 
 [dependencies]
 sameold = {path = "../sameold", version = "0.2.4"}
+anyhow = "^1"
+atty = "^0.2"
 byteorder = "^1.4"
-clap = "^2.33"
+clap = {version = "^4.1", features = ["color", "derive", "wrap_help"]}
 log = "^0.4"
 pretty_env_logger = "^0.4"
 
