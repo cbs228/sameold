@@ -1,5 +1,6 @@
-use clap::value_parser;
-use clap::Parser;
+use std::fmt::Display;
+
+use clap::{error::ErrorKind, value_parser, CommandFactory, Parser};
 
 /// Standard input filename
 const STDIN_FILE: &str = "-";
@@ -149,6 +150,64 @@ impl Args {
     /// Return true if the user requests input from stdin
     pub fn input_is_stdin(&self) -> bool {
         self.file == STDIN_FILE
+    }
+}
+
+/// A program-level error with exit code
+#[derive(Debug)]
+pub struct CliError {
+    error: anyhow::Error,
+    exit_code: i32,
+}
+
+impl CliError {
+    /// Create new error with a custom exit code
+    pub fn new(error: anyhow::Error, code: i32) -> CliError {
+        CliError {
+            error,
+            exit_code: code,
+        }
+    }
+
+    /// Print this error to the terminal
+    ///
+    /// Errors from clap are printed verbatim. Other types of errors
+    /// are printed indirectly via clap's fancy formatter.
+    pub fn print(&self) -> std::io::Result<()> {
+        if let Some(e) = self.error.downcast_ref::<clap::Error>() {
+            e.print()
+        } else {
+            Args::command()
+                .error(ErrorKind::Format, self.to_string())
+                .print()
+        }
+    }
+
+    /// Print this error to the terminal and exit
+    pub fn exit(&self) -> ! {
+        drop(self.print());
+        std::process::exit(self.exit_code);
+    }
+}
+
+impl Display for CliError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.error)
+    }
+}
+
+impl std::error::Error for CliError {}
+
+impl From<anyhow::Error> for CliError {
+    fn from(err: anyhow::Error) -> CliError {
+        CliError::new(err, 1)
+    }
+}
+
+impl From<clap::Error> for CliError {
+    fn from(err: clap::Error) -> CliError {
+        let code = if err.use_stderr() { 1 } else { 0 };
+        CliError::new(err.into(), code)
     }
 }
 

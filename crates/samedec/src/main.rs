@@ -1,5 +1,6 @@
 use std::io;
 
+use anyhow::Context;
 use byteorder::{NativeEndian, ReadBytesExt};
 use clap::Parser;
 use log::{info, LevelFilter};
@@ -10,11 +11,18 @@ mod app;
 mod cli;
 mod spawner;
 
-use cli::Args;
+use cli::{Args, CliError};
 
 fn main() {
+    match samedec() {
+        Ok(()) => {}
+        Err(cli_error) => cli_error.exit(),
+    }
+}
+
+fn samedec() -> Result<(), CliError> {
     // Parse options and start logging
-    let args = Args::parse();
+    let args = Args::try_parse()?;
     log_setup(&args);
 
     // create the decoder
@@ -31,7 +39,7 @@ fn main() {
     // file setup: locks stdin in case we need it
     let stdin = io::stdin();
     let stdin_handle = stdin.lock();
-    let mut inbuf = file_setup(&args, stdin_handle);
+    let mut inbuf = file_setup(&args, stdin_handle)?;
 
     // processing: read i16 from the input source
     app::run(
@@ -49,6 +57,8 @@ fn main() {
         }
         None => {}
     }
+
+    Ok(())
 }
 
 fn log_setup(args: &Args) {
@@ -77,14 +87,15 @@ fn log_setup(args: &Args) {
 fn file_setup<'stdin>(
     args: &Args,
     stdin: std::io::StdinLock<'stdin>,
-) -> Box<dyn io::BufRead + 'stdin> {
+) -> Result<Box<dyn io::BufRead + 'stdin>, anyhow::Error> {
     if args.input_is_stdin() {
         info!("SAME decoder reading standard input");
-        Box::new(io::BufReader::new(stdin))
+        Ok(Box::new(io::BufReader::new(stdin)))
     } else {
-        info!("SAME decoder reading file");
-        Box::new(io::BufReader::new(
-            std::fs::File::open(&args.file).expect("Unable to open requested FILE"),
-        ))
+        info!("SAME decoder reading file: \"{}\"", &args.file);
+        Ok(Box::new(io::BufReader::new(
+            std::fs::File::open(&args.file)
+                .with_context(|| format!("Unable to open --file \"{}\"", args.file))?,
+        )))
     }
 }
