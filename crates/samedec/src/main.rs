@@ -1,6 +1,6 @@
 use std::io;
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use byteorder::{NativeEndian, ReadBytesExt};
 use clap::Parser;
 use log::{info, LevelFilter};
@@ -90,7 +90,16 @@ fn file_setup<'stdin>(
 ) -> Result<Box<dyn io::BufRead + 'stdin>, anyhow::Error> {
     if args.input_is_stdin() {
         info!("SAME decoder reading standard input");
-        Ok(Box::new(io::BufReader::new(stdin)))
+        if !atty::is(atty::Stream::Stdin) {
+            Ok(Box::new(io::BufReader::new(stdin)))
+        } else {
+            Err(anyhow!(
+                "cowardly refusing to read audio samples from a terminal.
+
+Pipe a source of raw uncompressed audio from sox, parec, rtl_fm,
+or similar into this program."
+            ))
+        }
     } else {
         info!("SAME decoder reading file: \"{}\"", &args.file);
         Ok(Box::new(io::BufReader::new(
