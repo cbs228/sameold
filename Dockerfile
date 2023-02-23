@@ -26,10 +26,7 @@ FROM docker.io/library/rust:${BUILD_RUST_TAG}-${BUILD_OS_TAG} AS samedec-build-d
 
 ARG CARGO_BUILD_TARGET=
 
-# Fetch with CLI for Github Runners, see
-# <https://github.com/docker/build-push-action/issues/621>
-ENV CARGO_NET_GIT_FETCH_WITH_CLI="true" \
-    CARGO_INSTALL_ROOT=/usr/local \
+ENV CARGO_INSTALL_ROOT=/usr/local \
     CARGO_TERM_COLOR=always \
     RUST_BACKTRACE=1 \
     RUSTFLAGS='-C strip=symbols'
@@ -40,17 +37,14 @@ WORKDIR /build
 RUN cat /etc/os-release && \
     cargo --version
 
-# Modify image OS if required. Install git
-# for CARGO_NET_GIT_FETCH_WITH_CLI
+# Modify image OS if required
 RUN eval "$(cat </etc/os-release)" && \
     case "$ID" in \
       alpine) \
         # install static musl so we can statically link
-        apk add --no-cache musl-dev git ;; \
+        apk add --no-cache musl-dev ;; \
       debian) \
         # record glibc version for posterity
-        apt-get update && \
-        apt-get install -y git && \
         ldd --version ldd ;; \
     esac
 
