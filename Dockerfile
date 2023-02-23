@@ -4,7 +4,13 @@
 ### BUILD OPTIONS
 ###
 ###   See <https://hub.docker.com/_/rust> for current
-###   list of tags.
+###   list of tags. You may use vendored sources by
+###   running
+###
+###     cargo vendor --versioned-dirs --locked >.cargo/config.toml
+###
+###   on the HOST. When building with vendored sources,
+###   set --build-arg CARGO_NET_OFFLINE=true
 
 # Rust version, like "1" or "1.67.0"
 ARG BUILD_RUST_TAG=1.67
@@ -23,8 +29,6 @@ ARG BUILD_OS_TAG=slim-buster
 ###
 
 FROM docker.io/library/rust:${BUILD_RUST_TAG}-${BUILD_OS_TAG} AS samedec-build-deps
-
-ARG CARGO_BUILD_TARGET=
 
 ENV CARGO_INSTALL_ROOT=/usr/local \
     CARGO_TERM_COLOR=always \
@@ -61,22 +65,30 @@ COPY Cargo.lock \
 COPY crates/sameold/Cargo.toml crates/sameold/Cargo.toml
 COPY crates/samedec/Cargo.toml crates/samedec/Cargo.toml
 
-# Download dependencies
-RUN [ -n "$CARGO_BUILD_TARGET" ] || unset CARGO_BUILD_TARGET && \
-    cargo fetch --locked
+# Add vendored sources
+COPY vendor vendor
+COPY .cargo .cargo
 
-# Build dependencies
+# Target platform triple. Leave unset to autodetect.
+ARG CARGO_BUILD_TARGET=
+
+# Set to true if using vendored sources
+ARG CARGO_NET_OFFLINE=false
+
+# Fetch and build dependencies
 RUN [ -n "$CARGO_BUILD_TARGET" ] || unset CARGO_BUILD_TARGET && \
-    cargo build --offline --tests --frozen --release --workspace
+    cargo build --tests --locked --release --workspace
 
 ###
 ### FIRST-PARTY BUILD IMAGE
-###   Build's samedec itself
+###   Builds samedec itself
 ###
 
 FROM samedec-build-deps AS samedec-build
 
 ARG CARGO_BUILD_TARGET=
+
+ENV CARGO_NET_OFFLINE=true
 
 # Replace dummy crates with our sources
 COPY crates crates
@@ -85,8 +97,8 @@ COPY crates crates
 # build. samedec is installed to /usr/local/bin/samedec
 RUN [ -n "$CARGO_BUILD_TARGET" ] || unset CARGO_BUILD_TARGET && \
     touch crates/sameold/src/lib.rs crates/samedec/src/main.rs && \
-    cargo test --offline --frozen --release --workspace && \
-    cargo install --offline --frozen --path=crates/samedec
+    cargo test --frozen --release --workspace && \
+    cargo install --frozen --path=crates/samedec
 
 # Perform tests
 RUN samedec --version

@@ -2,3 +2,8 @@
 **/*.rs.bk
 *.iml
 /.idea
+
+# containerized build can use vendoring on the host side,
+# but we would prefer that this not be committed.
+.cargo
+/vendor
