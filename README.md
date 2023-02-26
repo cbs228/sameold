@@ -42,7 +42,8 @@ alerts.
 
 ### Binaries
 
-Binary builds are available on the [releases](./releases) page for a variety of
+Binary builds are available on the
+[releases](https://github.com/cbs228/sameold/releases) page for a variety of
 platforms. Linux binaries are currently built against glibc 2.28 and should be
 portable to most distros.
 

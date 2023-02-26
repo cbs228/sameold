@@ -13,9 +13,52 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  # run `cargo vendor` and cache it
+  vendor_sources:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - uses: actions/cache@v3
+      name: Update crate cargo-vendor cache
+      id: vendor_cache
+      with:
+        path: |
+          .cargo
+          vendor
+        key: cargo-vendor-release-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          cargo-vendor-release
+          cargo-vendor
+        enableCrossOsArchive: true
+
+    - uses: actions/cache@v3
+      name: Update cargo registry cache
+      if: steps.vendor_cache.outputs.cache-hit != 'true'
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+        key: ${{ runner.os }}-cargo-cache-release-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-cache-release
+          ${{ runner.os }}-cargo-cache
+
+    - name: Vendor sources
+      if: steps.vendor_cache.outputs.cache-hit != 'true'
+      run: |
+        mkdir -p .cargo
+        mkdir -p vendor
+        cargo vendor --versioned-dirs --locked >.cargo/config.toml
+
   # Linux builds, with Docker and qemu as required
   release_linux:
     runs-on: ubuntu-latest
+
+    needs: vendor_sources
 
     env:
       # See <https://hub.docker.com/_/rust> for list of tags
@@ -48,6 +91,16 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+
+    - uses: actions/cache/restore@v3
+      name: Restore crate cargo-vendor cache
+      with:
+        path: |
+          .cargo
+          vendor
+        key: cargo-vendor-release-${{ hashFiles('**/Cargo.lock') }}
+        enableCrossOsArchive: true
+        fail-on-cache-miss: true
 
     - name: Workaround for https://github.com/rust-lang/cargo/issues/8719
       run: |
@@ -84,6 +137,7 @@ jobs:
         target: localfile
         build-args: |
           CARGO_BUILD_TARGET=${{ matrix.rust }}
+          CARGO_NET_OFFLINE=true
           BUILD_OS_TAG=${{ matrix.os }}
           BUILD_RUST_TAG=${{ env.BUILD_RUST_TAG }}
         platforms: ${{ matrix.docker }}
@@ -131,9 +185,12 @@ jobs:
   release_windows:
     runs-on: windows-latest
 
+    needs: vendor_sources
+
     env:
       CARGO_BUILD_TARGET: x86_64-pc-windows-msvc
-      CARGO_INSTALL_ROOT: 'install/'
+      CARGO_NET_OFFLINE: "true"
+      CARGO_INSTALL_ROOT: "install/"
       RUSTFLAGS: '-C strip=symbols -C target-feature=+crt-static'
       samedec_exe: 'install/bin/samedec.exe'
       samedec_target_exe: install/bin/samedec-x86_64-pc-windows-msvc.exe
@@ -145,22 +202,20 @@ jobs:
       shell: bash
       run: cargo version
 
-    - uses: actions/cache@v3
-      name: Restore Rust cache
+    - uses: actions/cache/restore@v3
+      name: Restore crate cargo-vendor cache
       with:
         path: |
-          ~/.cargo/bin/
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-          target/
-        key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          .cargo
+          vendor
+        key: cargo-vendor-release-${{ hashFiles('**/Cargo.lock') }}
+        enableCrossOsArchive: true
+        fail-on-cache-miss: true
 
     - name: Build
       shell: bash
       run: |
         mkdir -p 'install' &&
-        cargo fetch --locked &&
         cargo build --offline --tests --frozen --release --workspace
 
     - name: Test and install
@@ -218,9 +273,12 @@ jobs:
   release_macos:
     runs-on: macos-latest
 
+    needs: vendor_sources
+
     env:
       CARGO_BUILD_TARGET: x86_64-apple-darwin
-      CARGO_INSTALL_ROOT: 'install/'
+      CARGO_NET_OFFLINE: "true"
+      CARGO_INSTALL_ROOT: "install/"
       RUSTFLAGS: '-C strip=symbols'
       samedec_exe: 'install/bin/samedec'
       samedec_target_exe: install/bin/samedec-x86_64-apple-darwin
@@ -231,16 +289,15 @@ jobs:
     - name: Record environment
       run: cargo version
 
-    - uses: actions/cache@v3
-      name: Restore Rust cache
+    - uses: actions/cache/restore@v3
+      name: Restore crate cargo-vendor cache
       with:
         path: |
-          ~/.cargo/bin/
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-          target/
-        key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          .cargo
+          vendor
+        key: cargo-vendor-release-${{ hashFiles('**/Cargo.lock') }}
+        enableCrossOsArchive: true
+        fail-on-cache-miss: true
 
     - name: Build
       run: |

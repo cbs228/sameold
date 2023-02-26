@@ -32,10 +32,10 @@ use std::process::Child;
 
 use byteorder::{NativeEndian, WriteBytesExt};
 use chrono::{DateTime, Utc};
-use clap::ArgMatches;
 use log::{debug, error, warn};
 use sameold::{Message, MessageHeader, SameReceiver};
 
+use crate::cli::Args;
 use crate::spawner;
 
 /// Run the application
@@ -47,23 +47,11 @@ use crate::spawner;
 ///
 /// In demo mode (see `args`), we print a demo message, wait, and
 /// then exit.
-pub fn run<I>(args: &ArgMatches, receiver: &mut SameReceiver, mut input: I)
+pub fn run<I>(args: &Args, receiver: &mut SameReceiver, mut input: I)
 where
     I: Iterator<Item = i16>,
 {
-    let child_args: Vec<&str> = match args.values_of("CHILD") {
-        Some(child_args) => child_args.collect(),
-        None => Vec::default(),
-    };
-
-    let cfg = Config {
-        child_args,
-        input_rate_str: args.value_of("rate").unwrap(),
-        quiet: args.occurrences_of("quiet") >= 1,
-        demo: args.occurrences_of("demo") >= 1,
-    };
-
-    if cfg.demo {
+    if args.demo {
         // demo mode: issue a DMO message, run the child for eight seconds,
         // and exit
         let duration_message = (receiver.input_rate() * 8) as usize;
@@ -72,28 +60,19 @@ where
         warn!("demonstration (--demo) mode: the following messages are NOT LIVE!");
 
         let mut alerting = State::<Alerting>::from(dmo);
-        alerting.until_message_end(&cfg, receiver, &mut input.take(duration_message));
+        alerting.until_message_end(&args, receiver, &mut input.take(duration_message));
 
         for _i in 0..3 {
             alerting = State::<Alerting>::from(Message::EndOfMessage);
-            alerting.until_message_end(&cfg, receiver, &mut std::iter::once(0i16));
+            alerting.until_message_end(&args, receiver, &mut std::iter::once(0i16));
         }
     } else {
         // live mode: look for messages in a loop
         let mut waiting = State::<Waiting>::new();
         while let Some(alerting) = waiting.until_message_start(receiver, &mut input) {
-            waiting = alerting.until_message_end(&cfg, receiver, &mut input);
+            waiting = alerting.until_message_end(&args, receiver, &mut input);
         }
     }
-}
-
-/// Configuration
-#[derive(Clone, Debug)]
-struct Config<'args> {
-    child_args: Vec<&'args str>,
-    input_rate_str: &'args str,
-    quiet: bool,
-    demo: bool,
 }
 
 #[derive(Debug)]
@@ -146,7 +125,7 @@ impl State<Alerting> {
     /// found or the iterator is exhausted.
     pub fn until_message_end<I>(
         mut self,
-        config: &Config<'_>,
+        config: &Args,
         receiver: &mut SameReceiver,
         input: &mut I,
     ) -> State<Waiting>
@@ -163,17 +142,19 @@ impl State<Alerting> {
                 Message::EndOfMessage => break, // → Waiting
             };
 
-            if config.child_args.is_empty() {
+            if config.child.is_empty() {
                 debug!("no child process to spawn");
                 return self.into(); // → Waiting
             }
 
+            let input_rate_string = format!("{}", config.rate);
+
             // try to spawn a child
             let mut child = match spawner::spawn(
-                config.child_args[0],
-                &config.child_args[1..],
+                &config.child[0],
+                &config.child[1..],
                 &hdr,
-                &config.input_rate_str,
+                &input_rate_string,
             ) {
                 Ok(child) => child,
                 Err(err) => {
@@ -277,12 +258,12 @@ fn make_demo_message(at: &DateTime<Utc>) -> Message {
 mod tests {
     use super::*;
 
-    use chrono::{Duration, TimeZone};
+    use chrono::{Duration, TimeZone, Utc};
     use sameold::EventCode;
 
     #[test]
     fn test_make_demo_message() {
-        let tm = Utc.ymd(2020, 12, 31).and_hms(23, 22, 00);
+        let tm = Utc.with_ymd_and_hms(2020, 12, 31, 23, 22, 00).unwrap();
         let msg = make_demo_message(&tm);
         let msg = match msg {
             Message::StartOfMessage(hdr) => hdr,

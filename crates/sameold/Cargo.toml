@@ -1,7 +1,7 @@
 [package]
 name = "sameold"
 description = "A SAME/EAS digital receiver library"
-version = "0.2.4"
+version = "0.2.5"
 authors = ["Colin S <3526918+cbs228@users.noreply.github.com>"]
 license = "MIT OR Apache-2.0"
 edition = "2018"

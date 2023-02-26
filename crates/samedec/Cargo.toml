@@ -1,7 +1,7 @@
 [package]
 name = "samedec"
 description = "A SAME/EAS digital receiver and alerting program"
-version = "0.2.4"
+version = "0.2.5"
 authors = ["Colin S <3526918+cbs228@users.noreply.github.com>"]
 license = "MIT OR Apache-2.0"
 edition = "2018"
@@ -10,9 +10,11 @@ repository = "https://github.com/cbs228/sameold.git"
 readme = "README.md"
 
 [dependencies]
-sameold = {path = "../sameold", version = "0.2.4"}
+sameold = {path = "../sameold", version = "^0.2.5"}
+anyhow = "^1"
+atty = "^0.2"
 byteorder = "^1.4"
-clap = "^2.33"
+clap = {version = "^4.1", features = ["color", "derive", "wrap_help"]}
 log = "^0.4"
 pretty_env_logger = "^0.4"
 
