@@ -588,7 +588,7 @@ dependencies = [
 
 [[package]]
 name = "samedec"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "anyhow",
  "atty",
@@ -602,7 +602,7 @@ dependencies = [
 
 [[package]]
 name = "sameold"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "arraydeque",
  "arrayvec",
