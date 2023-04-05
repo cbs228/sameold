@@ -1,4 +1,4 @@
-use crate::message::{Message, MessageDecodeErr};
+use crate::message::{Message, MessageDecodeErr, MessageResult};
 
 /// SAME/EAS Receiver Status
 ///
@@ -85,4 +85,35 @@ impl std::fmt::Display for FrameOut {
             _ => write!(f, "{}", self.as_ref()),
         }
     }
+}
+
+/// SAME Transport Layer Status
+///
+/// SAME [messages](Message) may be built from one, two, or three
+/// repetitions of (hopefully) identical retransmissions. Each
+/// burst is passed to the transport layer for processing.
+///
+/// 1. When the transport layer receives its first burst, the state
+///    becomes [`Assembling`](TransportState::Assembling).
+///
+/// 2. The modem waits for some time after the last burst is
+///    received to ensure it has the best decode possible.
+///
+/// 3. After this deadline passes, and a sufficient number of
+///    bursts are received, a [`Message`](TransportState::Message)
+///    is reported. If the decode failed, this `Message` might be
+///    an error.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum TransportState {
+    /// The assembler has not read enough bursts for a message
+    Idle,
+
+    /// The assembler is building a message
+    ///
+    /// One or more bursts are stored in the history, but the
+    /// assembler needs more before it can output a message.
+    Assembling,
+
+    /// A fully-assembled message or error is ready to report
+    Message(MessageResult),
 }

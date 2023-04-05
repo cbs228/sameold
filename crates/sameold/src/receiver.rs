@@ -1,8 +1,10 @@
 //! Full receiver chain
 
 mod agc;
+mod assembler;
 mod builder;
 mod codesquelch;
+mod combiner;
 mod dcblock;
 mod demod;
 mod equalize;
@@ -10,6 +12,7 @@ mod filter;
 mod framing;
 mod output;
 mod symsync;
+mod timeddata;
 mod waveform;
 
 #[cfg(not(test))]
