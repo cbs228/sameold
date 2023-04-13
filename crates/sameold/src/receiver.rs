@@ -1,5 +1,17 @@
 //! Full receiver chain
 
+mod agc;
+mod builder;
+mod codesquelch;
+mod dcblock;
+mod demod;
+mod equalize;
+mod filter;
+mod framing;
+mod output;
+mod symsync;
+mod waveform;
+
 #[cfg(not(test))]
 use log::{info, trace, warn};
 
@@ -9,15 +21,18 @@ use std::{println as trace, println as info, println as warn};
 use std::convert::From;
 use std::iter::{IntoIterator, Iterator};
 
-use crate::agc::Agc;
-use crate::builder::{EqualizerBuilder, SameReceiverBuilder};
-use crate::codesquelch::{CodeAndPowerSquelch, SquelchState};
-use crate::dcblock::DCBlocker;
-use crate::demod::{Demod, FskDemod};
-use crate::equalize::Equalizer;
-use crate::framing::{FrameOut, Framer};
-use crate::message::Message;
-use crate::symsync::TimingLoop;
+pub use self::builder::{EqualizerBuilder, SameReceiverBuilder};
+pub use self::output::FrameOut;
+
+use crate::Message;
+
+use self::agc::Agc;
+use self::codesquelch::{CodeAndPowerSquelch, SquelchState};
+use self::dcblock::DCBlocker;
+use self::demod::{Demod, FskDemod};
+use self::equalize::Equalizer;
+use self::framing::Framer;
+use self::symsync::TimingLoop;
 
 /// A complete SAME/EAS receiver chain
 ///
@@ -363,7 +378,7 @@ impl From<&SameReceiverBuilder> for SameReceiver {
     /// Create the SAME Receiver from its Builder
     fn from(cfg: &SameReceiverBuilder) -> Self {
         let input_rate = cfg.input_rate();
-        let sps = crate::waveform::samples_per_symbol(input_rate);
+        let sps = waveform::samples_per_symbol(input_rate);
         let (timing_bandwidth_unlocked, timing_bandwidth_locked) = cfg.timing_bandwidth();
         let (power_open, power_close) = cfg.squelch_power();
         let dc_block = DCBlocker::new((cfg.dc_blocker_length() * sps) as usize);
@@ -375,7 +390,7 @@ impl From<&SameReceiverBuilder> for SameReceiver {
         let demod = FskDemod::new_from_same(cfg.input_rate());
         let symsync = TimingLoop::new(sps, timing_bandwidth_unlocked, cfg.timing_max_deviation());
         let code_squelch = CodeAndPowerSquelch::new(
-            crate::waveform::PREAMBLE_SYNC_WORD,
+            waveform::PREAMBLE_SYNC_WORD,
             cfg.preamble_max_errors(),
             power_open,
             power_close,
@@ -390,7 +405,7 @@ impl From<&SameReceiverBuilder> for SameReceiver {
             eqcfg.filter_order().1,
             eqcfg.relaxation(),
             eqcfg.regularization(),
-            Some(crate::waveform::PREAMBLE_SYNC_WORD),
+            Some(waveform::PREAMBLE_SYNC_WORD),
         );
         let framer = Framer::new(cfg.frame_prefix_max_errors(), cfg.frame_max_invalid());
 
@@ -468,7 +483,7 @@ where
 ///
 /// This iterator returns successful message decodes
 /// only. If you want more events, see
-/// [`SourceIter`].
+/// [`SourceIterFrames`].
 #[derive(Debug)]
 pub struct SourceIterMsg<'rx, I>(SourceIterFrames<'rx, I>)
 where
@@ -512,8 +527,6 @@ mod tests {
 
     use std::io::Write;
 
-    use crate::waveform::{bytes_to_samples, modulate_afsk};
-
     const TEST_MESSAGE: &str = "ZCZC-EAS-DMO-372088-091724-919623-645687-745748-175234-039940-955869-091611-304171-931612-334828-179485-569615-809223-830187-611340-014693-472885-084645-977764-466883-406863-390018-701741-058097-752790-311648-820127-255900-581947+0000-0001122-NOCALL00-";
 
     // this method exists to allow us to dump the modulated
@@ -528,7 +541,7 @@ mod tests {
     }
 
     fn make_test_message() -> Vec<u8> {
-        const PREAMBLE: &[u8] = &[crate::waveform::PREAMBLE; 16];
+        const PREAMBLE: &[u8] = &[waveform::PREAMBLE; 16];
 
         let mut message: Vec<u8> = vec![];
         message.extend_from_slice(PREAMBLE);
@@ -541,8 +554,8 @@ mod tests {
     // Returns waveform and number of samples per symbol, at 22.5 kSa/s
     // The returned waveform has all three bursts.
     fn make_test_burst(msg: &[u8]) -> (Vec<f32>, usize) {
-        let sample_low = bytes_to_samples(msg, 1);
-        let (sample_high, sps) = modulate_afsk(&sample_low, 22050);
+        let sample_low = waveform::bytes_to_samples(msg, 1);
+        let (sample_high, sps) = waveform::modulate_afsk(&sample_low, 22050);
 
         // scale like we're using i16, deliberately not using full arithmetic range
         let burst: Vec<f32> = sample_high.iter().map(|&v| (v * 16384.0f32)).collect();

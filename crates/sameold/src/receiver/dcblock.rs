@@ -1,6 +1,6 @@
 //! DC Blocker
 
-use crate::filter::Window;
+use super::filter::Window;
 
 /// DC-Blocking Filter
 ///

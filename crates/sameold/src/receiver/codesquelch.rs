@@ -214,7 +214,7 @@ impl CodeAndPowerSquelch {
     /// at the input. The input must already be aligned to the symbol
     /// clock: `input[0]` must be a zero, and `input[1]` must be
     /// a symbol estimate. This is, coincidentally, just how
-    /// [`TimingLoop`](crate::symsync::TimingLoop) outputs
+    /// [`TimingLoop`](super::symsync::TimingLoop) outputs
     /// them.
     ///
     /// If the output is `None`, the sync has not yet been found.
@@ -496,15 +496,14 @@ impl PowerTracker {
 
 #[cfg(test)]
 mod tests {
+    use super::super::waveform;
     use super::*;
 
     use assert_approx_eq::assert_approx_eq;
 
-    use crate::waveform::{bytes_to_samples, bytes_to_symbols};
-
     #[test]
     fn test_num_bit_errors() {
-        let sync_to = crate::waveform::PREAMBLE_SYNC_WORD;
+        let sync_to = waveform::PREAMBLE_SYNC_WORD;
         let one_error = sync_to | 0x40u32;
         let another_error = 0xa9ababab;
 
@@ -516,9 +515,9 @@ mod tests {
     #[test]
     fn test_codecorr() {
         const BYTES: &[u8] = &[0xAB, 0xAB, 0xAB, 0xAB, 0x21];
-        let mut syms = bytes_to_symbols(BYTES);
+        let mut syms = waveform::bytes_to_symbols(BYTES);
 
-        let mut uut = CodeCorrelator::new(crate::waveform::PREAMBLE_SYNC_WORD);
+        let mut uut = CodeCorrelator::new(waveform::PREAMBLE_SYNC_WORD);
 
         // correlation reaches minimum error at 32 bits
         let out: Vec<u32> = syms.iter().map(|s| uut.search(*s)).collect();
@@ -559,10 +558,9 @@ mod tests {
     #[test]
     fn test_simple_sync() {
         const BYTES: &[u8] = &[0xAB, 0xAB, 0xAB, 0xAB, 0x21];
-        let insamp = bytes_to_samples(BYTES, 2);
+        let insamp = waveform::bytes_to_samples(BYTES, 2);
 
-        let mut squelch =
-            CodeAndPowerSquelch::new(crate::waveform::PREAMBLE_SYNC_WORD, 0, 0.0, 0.0, 0.1);
+        let mut squelch = CodeAndPowerSquelch::new(waveform::PREAMBLE_SYNC_WORD, 0, 0.0, 0.0, 0.1);
         assert!(!squelch.is_sync());
 
         let mut align_idx = 0; // sync sequence begins at 0 samples in insamp
@@ -596,10 +594,9 @@ mod tests {
     #[test]
     fn test_sync_with_error() {
         const BYTES: &[u8] = &[0xF0, 0x0B, 0xA9, 0xAB, 0xAB, 0xAB, 0x21];
-        let insamp = bytes_to_samples(BYTES, 2);
+        let insamp = waveform::bytes_to_samples(BYTES, 2);
 
-        let mut squelch =
-            CodeAndPowerSquelch::new(crate::waveform::PREAMBLE_SYNC_WORD, 1, 0.0, 0.0, 0.1);
+        let mut squelch = CodeAndPowerSquelch::new(waveform::PREAMBLE_SYNC_WORD, 1, 0.0, 0.0, 0.1);
         assert!(!squelch.is_sync());
 
         let mut align_idx = 32; // sync sequence begins at 32 samples in insamp
@@ -622,12 +619,11 @@ mod tests {
     #[test]
     fn test_sync_with_lots_of_errors() {
         const BYTES: &[u8] = &[0xAB, 0x0B, 0xA9, 0xAB, 0xAB, 0xAA, 0x21];
-        let insamp = bytes_to_samples(BYTES, 2);
+        let insamp = waveform::bytes_to_samples(BYTES, 2);
 
         let mut found_early = false;
         let mut found_later = false;
-        let mut squelch =
-            CodeAndPowerSquelch::new(crate::waveform::PREAMBLE_SYNC_WORD, 3, 0.0, 0.0, 0.1);
+        let mut squelch = CodeAndPowerSquelch::new(waveform::PREAMBLE_SYNC_WORD, 3, 0.0, 0.0, 0.1);
         assert!(!squelch.is_sync());
 
         let mut align_idx = 32; // sync sequence begins at 32 samples in insamp
@@ -655,11 +651,10 @@ mod tests {
     #[test]
     fn test_power_detection() {
         const BYTES: &[u8] = &[0xF0, 0x0B, 0xA9, 0xAB, 0xAB, 0xAB, 0x21];
-        let insamp = bytes_to_samples(BYTES, 2);
+        let insamp = waveform::bytes_to_samples(BYTES, 2);
 
         // we open the squelch
-        let mut squelch =
-            CodeAndPowerSquelch::new(crate::waveform::PREAMBLE_SYNC_WORD, 1, 0.9, 0.5, 0.1);
+        let mut squelch = CodeAndPowerSquelch::new(waveform::PREAMBLE_SYNC_WORD, 1, 0.9, 0.5, 0.1);
         for inp in insamp.chunks(2) {
             let _ = squelch.input(inp);
         }

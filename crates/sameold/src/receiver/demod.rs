@@ -23,7 +23,8 @@
 
 use num_complex::Complex;
 
-use crate::filter::{FilterCoeff, Window};
+use super::filter::{FilterCoeff, Window};
+use super::waveform;
 
 /// A demodulator
 ///
@@ -123,7 +124,7 @@ impl FskDemod {
     /// Output symbols will range from `[-1.0, 0.0]` for
     /// "space" and from `[0.0, 1.0]` for "mark."
     pub fn new_from_same(fs: u32) -> Self {
-        let (mark, space) = crate::waveform::matched_filter(fs);
+        let (mark, space) = waveform::matched_filter(fs);
         Self::new_from_taps(mark.as_slice(), space.as_slice())
     }
 
@@ -187,6 +188,7 @@ impl Demod for FskDemod {
 
 #[cfg(test)]
 mod tests {
+    use super::super::waveform;
     use super::*;
 
     #[test]
@@ -195,7 +197,7 @@ mod tests {
         const FS_AFSK: u32 = 11025;
 
         // modulate, adding some extra samples so we don't run off the end
-        let (mut modulated, samples_per_sym) = crate::waveform::modulate_afsk(TEST_SYMS, FS_AFSK);
+        let (mut modulated, samples_per_sym) = waveform::modulate_afsk(TEST_SYMS, FS_AFSK);
         let filter_delay = samples_per_sym / 2;
         modulated.extend(std::iter::repeat(0.0f32).take(filter_delay as usize));
 

@@ -1,4 +1,7 @@
-//! Framer outputs for the client
+//! SAME message ASCII encoding and decoding
+
+mod event;
+mod originator;
 
 use std::convert::TryFrom;
 use std::fmt;
@@ -9,8 +12,10 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use thiserror::Error;
 
-use super::event::{EventCode, UnrecognizedEventCode};
-use super::originator::Originator;
+pub use event::{
+    EventCode, EventCodeIter, SignificanceLevel, UnknownSignificanceLevel, UnrecognizedEventCode,
+};
+pub use originator::Originator;
 
 /// The result of parsing a message
 pub type MessageResult = Result<Message, MessageDecodeErr>;

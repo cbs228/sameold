@@ -183,23 +183,13 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
-mod agc;
-mod builder;
-mod codesquelch;
-mod dcblock;
-mod demod;
-mod equalize;
-mod filter;
-mod framing;
 mod message;
 mod receiver;
-mod symsync;
-mod waveform;
 
-pub use builder::{EqualizerBuilder, SameReceiverBuilder};
-pub use framing::FrameOut;
 pub use message::{
     EventCode, EventCodeIter, InvalidDateErr, Message, MessageDecodeErr, MessageHeader,
     MessageResult, Originator, SignificanceLevel, UnknownSignificanceLevel, UnrecognizedEventCode,
 };
-pub use receiver::{SameReceiver, SourceIterFrames};
+pub use receiver::{
+    EqualizerBuilder, FrameOut, SameReceiver, SameReceiverBuilder, SourceIterFrames,
+};
