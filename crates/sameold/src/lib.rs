@@ -42,7 +42,7 @@
 //! demodulation.
 //!
 //! ```
-//! use sameold::{FrameOut, Message, SameReceiverBuilder};
+//! use sameold::{Message, SameReceiverBuilder};
 //!
 //! # let some_audio_source_iterator = || std::iter::once(0.0f32);
 //! // Create a SameReceiver with your audio sampling rate
@@ -80,12 +80,48 @@
 //! There is no need to scale them as long as you configure the
 //! AGC properly, as above.
 //!
-//! The iterator consumes as many samples as possible until the next
-//! [`Message`] is decoded.
+//! The [`iter_messages()`](crate::SameReceiver::iter_messages()) iterator
+//! consumes as many samples as possible until the next [`Message`] is decoded.
 //!
-//! You can use the [`iter_frames()`](SameReceiver::iter_frames)
-//! method instead to obtain more information about what the demodulator is
-//! doing, including errors framing messages.
+//! ### Modem Behavior
+//!
+//! | # of Bursts | Decoding Strategy                  |
+//! |-------------|------------------------------------|
+//! | 1           | Fast EOM / `NNNN` only             |
+//! | 2           | Error detection (equality checks)  |
+//! | 3           | Error correction (bit voting)      |
+//!
+//! SAME messages are always transmitted three times, in separate "bursts," for
+//! redundancy. When decoding the start of message *headers* (`ZCZC`), `samedec`
+//! will use all three bursts together to improve decoding—if possible.
+//!
+//! If one retransmission is missed, `samedec` will automatically fall back to
+//! decoding with only two bursts. The decoder imposes a delay of approximately
+//! **1.311 seconds** on all received headers. This delay is not usually
+//! problematic as most SAME messages are prefixed with a Warning Alarm Tone that
+//! is not information-bearing.
+//!
+//! The message *trailers* are not subject to the same error-correction process
+//! and delay as the headers. The end-of-message indicator (`NNNN`) will be
+//! printed just soon as it is received and decoded.
+//!
+//! The modem contains duplicate-suppression logic. Identical messages which
+//! arrive within a window of approximately **10.86 seconds** of each other will
+//! be suppressed and not emitted.
+//!
+//! The modem is separated into two parts:
+//!
+//! 1. the "*link layer*," which converts analog waveforms into framed
+//!    [`Burst`](crate::LinkState::Burst)s; and
+//!
+//! 2. the "*transport layer*," assembles individual `Bursts` into `Messages`.
+//!
+//! Events from both layers can be captured using the
+//! [`iter_events()`](crate::SameReceiver::iter_events) method instead of
+//! `iter_messages()`. The events iterator can be used to obtain raw framed
+//! [bursts](crate::SameEvent::burst) without delay or error-correction.
+//! Events can also report the detection of SAME carrier signals before and
+//! during message decoding.
 //!
 //! ### Interpreting Messages
 //!
@@ -191,5 +227,6 @@ pub use message::{
     MessageResult, Originator, SignificanceLevel, UnknownSignificanceLevel, UnrecognizedEventCode,
 };
 pub use receiver::{
-    EqualizerBuilder, FrameOut, SameReceiver, SameReceiverBuilder, SourceIterFrames,
+    EqualizerBuilder, LinkState, SameEvent, SameEventType, SameReceiver, SameReceiverBuilder,
+    TransportState,
 };

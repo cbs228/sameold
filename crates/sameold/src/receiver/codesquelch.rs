@@ -25,24 +25,32 @@ use log::debug;
 use std::println as debug;
 
 /// Squelch state
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SquelchState {
+    /// No carrier
+    ///
+    /// The squelch is "closed" and is not emitting data. No data
+    /// will be output until sync is acquired
+    NoCarrier,
+
+    /// Dropped carrier
+    ///
+    /// The squelch was previously emitting data, but carrier has
+    /// dropped on this update.
+    DroppedCarrier,
+
     /// Reading data
     ///
-    /// No state change. The squelch is synchronized and reading
-    /// data.
+    /// No state change. The squelch is reading data, but none is
+    /// available yet
     Reading,
 
-    /// Acquired symbol synchronization
+    /// Data ready
     ///
-    /// The synchronization has been acquired and/or adjusted.
-    Acquired,
-
-    /// Dropped symbol synchronization
-    ///
-    /// No further [`SquelchOut`] will
-    /// be output until sync is acquired.
-    Dropped,
+    /// The squelch is synchronized and an entire byte of
+    /// symbol/zero samples is ready. If the boolean payload
+    /// is `true`, the squelch has been freshly re-synchronized.
+    Ready(bool, SquelchOut),
 }
 
 /// Squelch output
@@ -79,13 +87,6 @@ pub struct SquelchOut {
     /// power (amplitude-squared) units. This value is the power
     /// estimate as of the last symbol in `samples`.
     pub power: f32,
-
-    /// Reports squelch state
-    ///
-    /// If the sync has been acquired or adjusted, reports
-    /// `SquelchState::Acquired`. If the sync is dropped and
-    /// this is the last output, reports `SquelchState::Dropped`.
-    pub state: SquelchState,
 }
 
 /// Access code and power squelch
@@ -224,7 +225,7 @@ impl CodeAndPowerSquelch {
     ///
     /// This method may panic if `input` does not contain
     /// exactly two samples (and will panic in debug mode).
-    pub fn input(&mut self, input: &[f32]) -> Option<SquelchOut> {
+    pub fn input(&mut self, input: &[f32]) -> SquelchState {
         // append to history and correlator
         assert_eq!(Self::INPUT_LENGTH, input.len());
         self.sample_history.push_back(input[0]);
@@ -236,18 +237,19 @@ impl CodeAndPowerSquelch {
 
         if !self.sample_history.is_full() {
             // wait for buffer to fill
-            return None;
+            return SquelchState::NoCarrier;
         }
 
-        let new_sync = !self.sync_lock && err <= self.max_errors && pwr >= self.power_open;
-
-        let report_state = if new_sync {
+        let mut adjusted = false;
+        if !self.sync_lock && err <= self.max_errors && pwr >= self.power_open {
+            // sync is acquired and/or adjusted
             self.sample_clock = match self.sample_clock {
                 None => {
                     debug!(
                         "squelch: acquired byte sync: {} errors, power {:.3}",
                         err, pwr
                     );
+                    adjusted = true;
                     Some(0)
                 }
                 Some(0) => {
@@ -261,31 +263,24 @@ impl CodeAndPowerSquelch {
                         err,
                         pwr
                     );
+                    adjusted = true;
                     Some(0)
                 }
             };
-            SquelchState::Acquired
         } else if self.is_sync() && !self.power_history.front().expect("bad power history") {
+            // sync is lost
             debug!(
                 "squelch: lost sync: symbol power {:.3} below threshold",
                 pwr
             );
             self.end();
-
-            let mut out = SquelchOut::default();
-            out.symbol_counter = self.symbol_counter;
-            out.power = pwr;
-            out.state = SquelchState::Dropped;
-
-            return Some(out);
-        } else {
-            SquelchState::Reading
-        };
+            return SquelchState::DroppedCarrier;
+        }
 
         // if the output clock is byte-aligned, output the last
         // byte's worth of samples
         match self.sample_clock {
-            None => None,
+            None => SquelchState::NoCarrier,
             Some(0) => {
                 self.sample_clock = Some(1);
 
@@ -299,12 +294,11 @@ impl CodeAndPowerSquelch {
                 }
                 out.symbol_counter = self.symbol_counter;
                 out.power = pwr;
-                out.state = report_state;
-                Some(out)
+                SquelchState::Ready(adjusted, out)
             }
             Some(ref mut clk) => {
                 *clk = (*clk + 1) % 8;
-                None
+                SquelchState::Reading
             }
         }
     }
@@ -565,20 +559,16 @@ mod tests {
 
         let mut align_idx = 0; // sync sequence begins at 0 samples in insamp
         for (chunk, inp) in insamp.chunks(2).enumerate() {
-            let lock = squelch.input(inp);
-            match lock {
-                Some(out) => {
-                    // only get one sync pulse
-                    if out.state == SquelchState::Acquired {
-                        assert_eq!(chunk, 31);
+            match squelch.input(inp) {
+                SquelchState::Ready(resync, out) => {
+                    assert!(!resync || chunk == 31);
+                    if chunk == 31 {
                         assert_eq!(squelch.correlator.data, 0xabababab);
                     }
-                    assert!(out.state != SquelchState::Acquired || chunk == 31);
 
-                    // outsamp is aligned with insamp
+                    // check alignment
                     assert_eq!(&out.samples, &insamp[align_idx..align_idx + 16]);
                     align_idx += 16;
-
                     assert_eq!(out.symbol_counter - 1, chunk as u64);
                 }
                 _ => {}
@@ -601,10 +591,9 @@ mod tests {
 
         let mut align_idx = 32; // sync sequence begins at 32 samples in insamp
         for (chunk, inp) in insamp.chunks(2).enumerate() {
-            let lock = squelch.input(inp);
-            match lock {
-                Some(out) => {
-                    assert!(out.state != SquelchState::Acquired || 47 == chunk);
+            match squelch.input(inp) {
+                SquelchState::Ready(resync, out) => {
+                    assert!(!resync || 47 == chunk);
                     assert_eq!(&out.samples, &insamp[align_idx..align_idx + 16]);
                     align_idx += 16;
                 }
@@ -623,14 +612,13 @@ mod tests {
 
         let mut found_early = false;
         let mut found_later = false;
-        let mut squelch = CodeAndPowerSquelch::new(waveform::PREAMBLE_SYNC_WORD, 3, 0.0, 0.0, 0.1);
+        let mut squelch = CodeAndPowerSquelch::new(waveform::PREAMBLE_SYNC_WORD, 3, 0.8, 0.1, 0.1);
         assert!(!squelch.is_sync());
 
         let mut align_idx = 32; // sync sequence begins at 32 samples in insamp
         for (chunk, inp) in insamp.chunks(2).enumerate() {
-            let lock = squelch.input(inp);
-            match lock {
-                Some(out) => {
+            match squelch.input(inp) {
+                SquelchState::Ready(_, out) => {
                     if chunk == 47 {
                         assert_eq!(&out.samples, &insamp[align_idx..align_idx + 16]);
                         align_idx += 16;
@@ -660,15 +648,21 @@ mod tests {
         }
         assert!(squelch.is_sync());
 
-        // now append a bunch of zeroes and watch it close
-        let mut last = SquelchOut::default();
-        for _i in 0..40 {
-            if let Some(out) = squelch.input(&[0.0f32, 0.0f32]) {
-                last = out;
+        // Test that we drop carrier with enough zeros
+        let mut found_reading = false;
+        let mut found_drop = false;
+        let mut found_none = false;
+        for (samps, _itr) in std::iter::repeat([0.0f32; 2]).zip(0..40) {
+            match squelch.input(&samps) {
+                SquelchState::Reading => found_reading = true,
+                SquelchState::DroppedCarrier => found_drop = true,
+                SquelchState::NoCarrier => found_none = true,
+                _ => {}
             }
         }
-
+        assert!(found_reading);
+        assert!(found_drop);
+        assert!(found_none);
         assert!(!squelch.is_sync());
-        assert!(last.state == SquelchState::Dropped);
     }
 }
