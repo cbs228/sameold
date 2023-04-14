@@ -199,7 +199,7 @@ mod waveform;
 pub use builder::{EqualizerBuilder, SameReceiverBuilder};
 pub use framing::FrameOut;
 pub use message::{
-    EventCode, EventCodeIter, InvalidDateErr, Message, MessageDecodeErr, MessageHeader, Originator,
-    SignificanceLevel, UnknownSignificanceLevel, UnrecognizedEventCode,
+    EventCode, EventCodeIter, InvalidDateErr, Message, MessageDecodeErr, MessageHeader,
+    MessageResult, Originator, SignificanceLevel, UnknownSignificanceLevel, UnrecognizedEventCode,
 };
 pub use receiver::{SameReceiver, SourceIterFrames};

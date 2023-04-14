@@ -7,5 +7,5 @@ mod originator;
 pub use event::{
     EventCode, EventCodeIter, SignificanceLevel, UnknownSignificanceLevel, UnrecognizedEventCode,
 };
-pub use message::{InvalidDateErr, Message, MessageDecodeErr, MessageHeader};
+pub use message::{InvalidDateErr, Message, MessageDecodeErr, MessageHeader, MessageResult};
 pub use originator::Originator;

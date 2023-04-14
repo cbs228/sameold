@@ -12,6 +12,9 @@ use thiserror::Error;
 use super::event::{EventCode, UnrecognizedEventCode};
 use super::originator::Originator;
 
+/// The result of parsing a message
+pub type MessageResult = Result<Message, MessageDecodeErr>;
+
 /// A fully-decoded SAME/EAS message
 ///
 /// In the EAS, the "message" is actually the audio signal to be
