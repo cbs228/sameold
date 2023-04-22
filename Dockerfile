@@ -103,17 +103,18 @@ RUN [ -n "$CARGO_BUILD_TARGET" ] || unset CARGO_BUILD_TARGET && \
 # Perform tests
 RUN samedec --version
 
-COPY sample/long_message.22050.s16le.* .
+COPY sample/*.22050.s16le.* .
 
-RUN EXPECT="$(cat <long_message.22050.s16le.txt)" && \
-    OUT="$(samedec -r 22050 <long_message.22050.s16le.bin)" && \
-    echo "$OUT" && \
-    if [ "$OUT" = "$EXPECT" ]; then \
+RUN set -e; \
+    for file in $(basename -s .bin *.s16le.bin); do \
+      printf '[%s]\n' "$file"; \
+      samedec -r 22050 <"$file.bin" | tee result; \
+      cmp result "$file.txt" || {\
+        echo "FAIL!"; \
+        exit 1; \
+      }; \
       echo "PASS"; \
-    else \
-      echo "FAIL!"; \
-      exit 1; \
-    fi
+    done
 
 ###
 ### NON-IMAGE

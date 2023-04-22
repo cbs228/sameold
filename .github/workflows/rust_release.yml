@@ -227,16 +227,17 @@ jobs:
     - name: Run integration tests
       shell: bash
       run: |
-        "$samedec_exe" --version &&
-        EXPECT="$(cat <sample/long_message.22050.s16le.txt)" &&
-        OUT="$("$samedec_exe" -r 22050 <sample/long_message.22050.s16le.bin)" &&
-        echo "$OUT" &&
-        if [ "$OUT" = "$EXPECT" ]; then
+        set -e;
+        "$samedec_exe" --version
+        for file in $(basename -s .bin sample/*.s16le.bin); do
+          printf '[%s]\n' "$file";
+          "$samedec_exe" -r 22050 <"sample/$file.bin" | tee result;
+          cmp result "sample/$file.txt" || {
+            echo "FAIL!";
+            exit 1;
+          };
           echo "PASS";
-        else
-          echo "FAIL!";
-          exit 1;
-        fi
+        done
 
     - name: Copy artifact
       shell: bash
@@ -312,16 +313,17 @@ jobs:
 
     - name: Run integration tests
       run: |
-        "$samedec_exe" --version &&
-        EXPECT="$(cat <sample/long_message.22050.s16le.txt)" &&
-        OUT="$("$samedec_exe" -r 22050 <sample/long_message.22050.s16le.bin)" &&
-        echo "$OUT" &&
-        if [ "$OUT" = "$EXPECT" ]; then
+        set -e;
+        "$samedec_exe" --version
+        for file in $(basename -s .bin sample/*.s16le.bin); do
+          printf '[%s]\n' "$file";
+          "$samedec_exe" -r 22050 <"sample/$file.bin" | tee result;
+          cmp result "sample/$file.txt" || {
+            echo "FAIL!";
+            exit 1;
+          };
           echo "PASS";
-        else
-          echo "FAIL!";
-          exit 1;
-        fi
+        done
 
     - name: Copy artifact
       run: |
