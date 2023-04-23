@@ -1,4 +1,7 @@
-//! Framer outputs for the client
+//! SAME message ASCII encoding and decoding
+
+mod event;
+mod originator;
 
 use std::convert::TryFrom;
 use std::fmt;
@@ -9,8 +12,13 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use thiserror::Error;
 
-use super::event::{EventCode, UnrecognizedEventCode};
-use super::originator::Originator;
+pub use event::{
+    EventCode, EventCodeIter, SignificanceLevel, UnknownSignificanceLevel, UnrecognizedEventCode,
+};
+pub use originator::Originator;
+
+/// The result of parsing a message
+pub type MessageResult = Result<Message, MessageDecodeErr>;
 
 /// A fully-decoded SAME/EAS message
 ///
@@ -102,6 +110,22 @@ impl Message {
             Self::EndOfMessage => 0,
         }
     }
+
+    /// Number of bytes which were bit-voted
+    ///
+    /// `voting_byte_count` is the total number of bytes which were
+    /// checked via the "two of three" bitwise voting algorithm—i.e.,
+    /// the total number of bytes for which all three SAME bursts were
+    /// available.
+    ///
+    /// Voting counts are *not* tracked for the `EndOfMessage`
+    /// variant.
+    pub fn voting_byte_count(&self) -> usize {
+        match self {
+            Self::StartOfMessage(m) => m.voting_byte_count(),
+            Self::EndOfMessage => 0,
+        }
+    }
 }
 
 /// An invalid issuance time
@@ -121,6 +145,10 @@ pub struct MessageHeader {
 
     // parity errors
     parity_error_count: usize,
+
+    // number of message bytes which could be bit-voted
+    // (i.e., because three bursts were available)
+    voting_byte_count: usize,
 }
 
 impl MessageHeader {
@@ -144,6 +172,7 @@ impl MessageHeader {
             message,
             offset_time,
             parity_error_count: 0,
+            voting_byte_count: 0,
         })
     }
 
@@ -166,6 +195,37 @@ impl MessageHeader {
         }
 
         out.parity_error_count = parity_error_count;
+        Ok(out)
+    }
+
+    /// Try to construct a SAME header from `String`, with error details
+    ///
+    /// The `message` string must match the general format of
+    /// a SAME header. If it does not, an error is returned.
+    ///
+    /// The `error_counts` slice counts the number of bit errors
+    /// corrected in byte of `message`. The slice must have the
+    /// same byte count as `message`.
+    ///
+    /// `burst_counts` is the total number of SAME bursts which were
+    /// used to estimate each message byte. This slice must have
+    /// the same byte count as `message`.
+    pub fn new_with_error_info<S>(
+        message: S,
+        error_counts: &[u8],
+        burst_counts: &[u8],
+    ) -> Result<Self, MessageDecodeErr>
+    where
+        S: Into<String>,
+    {
+        const MIN_BURSTS_FOR_VOTING: u8 = 3;
+
+        let mut out = Self::new_with_errors(message, error_counts)?;
+        let mut voting_byte_count = 0;
+        for (&e, _m) in burst_counts.iter().zip(out.message().as_bytes().iter()) {
+            voting_byte_count += (e >= MIN_BURSTS_FOR_VOTING) as usize;
+        }
+        out.voting_byte_count = voting_byte_count;
         Ok(out)
     }
 
@@ -448,6 +508,16 @@ impl MessageHeader {
         self.parity_error_count
     }
 
+    /// Number of bytes which were bit-voted
+    ///
+    /// `voting_byte_count` is the total number of bytes which were
+    /// checked via the "two of three" bitwise voting algorithm—i.e.,
+    /// the total number of bytes for which all three SAME bursts were
+    /// available.
+    pub fn voting_byte_count(&self) -> usize {
+        self.voting_byte_count
+    }
+
     /// Obtain the owned message String
     ///
     /// Destroys this object and releases the message
@@ -509,6 +579,26 @@ impl TryFrom<(String, &[u8])> for Message {
     }
 }
 
+impl TryFrom<(&[u8], &[u8], &[u8])> for Message {
+    type Error = MessageDecodeErr;
+
+    #[inline]
+    fn try_from(inp: (&[u8], &[u8], &[u8])) -> Result<Self, Self::Error> {
+        let instr = std::str::from_utf8(inp.0).map_err(|_e| MessageDecodeErr::NotAscii)?;
+        if instr.starts_with(PREFIX_MESSAGE_START) {
+            Ok(Message::StartOfMessage(MessageHeader::try_from((
+                instr.to_owned(),
+                inp.1,
+                inp.2,
+            ))?))
+        } else if instr.starts_with(&PREFIX_MESSAGE_END[0..2]) {
+            Ok(Message::EndOfMessage)
+        } else {
+            Err(MessageDecodeErr::UnrecognizedPrefix)
+        }
+    }
+}
+
 impl fmt::Display for MessageHeader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.message.fmt(f)
@@ -551,6 +641,15 @@ impl TryFrom<(String, &[u8])> for MessageHeader {
     #[inline]
     fn try_from(inp: (String, &[u8])) -> Result<Self, Self::Error> {
         Self::new_with_errors(inp.0, inp.1)
+    }
+}
+
+impl TryFrom<(String, &[u8], &[u8])> for MessageHeader {
+    type Error = MessageDecodeErr;
+
+    #[inline]
+    fn try_from(inp: (String, &[u8], &[u8])) -> Result<Self, Self::Error> {
+        Self::new_with_error_info(inp.0, inp.1, inp.2)
     }
 }
 
@@ -702,8 +801,14 @@ mod tests {
         errs[20] = 5u8;
         errs[THREE_LOCATIONS.len() - 1] = 8u8;
 
-        let msg = MessageHeader::try_from((THREE_LOCATIONS.to_owned(), errs.as_slice()))
-            .expect("bad msg");
+        let burst_count = vec![3u8; THREE_LOCATIONS.len()];
+
+        let msg = MessageHeader::try_from((
+            THREE_LOCATIONS.to_owned(),
+            errs.as_slice(),
+            burst_count.as_slice(),
+        ))
+        .expect("bad msg");
 
         assert_eq!(msg.originator_str(), "WXR");
         assert_eq!(Originator::WeatherService, msg.originator());
@@ -713,6 +818,7 @@ mod tests {
         assert_eq!(msg.issue_daytime_fields(), (366, 23, 22));
         assert_eq!(msg.callsign(), "NOCALL00");
         assert_eq!(msg.parity_error_count(), 6);
+        assert_eq!(msg.voting_byte_count(), msg.as_str().len());
 
         let loc: Vec<&str> = msg.location_str_iter().collect();
         assert_eq!(loc.as_slice(), &["012345", "567890", "888990"]);

@@ -42,7 +42,7 @@ and your demodulator offers you a choice, choose mono-only
 demodulation.
 
 ```rust
-use sameold::{FrameOut, Message, SameReceiverBuilder};
+use sameold::{Message, SameReceiverBuilder};
 
 // Create a SameReceiver with your audio sampling rate
 // Sound cards typically run at 44100 Hz or 48000 Hz. Use
@@ -73,20 +73,59 @@ for msg in rx.iter_messages(audiosrc) {
 The digital receiver is created via a
 [builder](https://docs.rs/sameold/latest/sameold/struct.SameReceiverBuilder.html).
 
-The
-[`SameReceiver`](https://docs.rs/sameold/latest/sameold/struct.SameReceiver.html)
+The [`SameReceiver`](https://docs.rs/sameold/latest/sameold/struct.SameReceiver.html)
 binds by iterator to any source of `f32` PCM mono (1-channel) audio samples. If
 you're using `i16` samples (as most sound cards do), you'll need to cast them to
 `f32`. There is no need to scale them as long as you configure the AGC properly,
 as above.
 
-The iterator consumes as many samples as possible until the next
-[`Message`] is decoded.
+The
+[`iter_messages()`](https://docs.rs/sameold/latest/sameold/struct.SameReceiver.html#method.iter_messages)
+iterator consumes as many samples as possible until the next
+[`Message`](https://docs.rs/sameold/latest/sameold/enum.Message.html)
+is decoded.
 
-You can use the
-[`iter_frames()`]((https://docs.rs/sameold/latest/sameold/struct.SameReceiver.html#method.iter_frames)
-method instead to obtain more information about what the demodulator is
-doing, including errors framing messages.
+### Modem Behavior
+
+| # of Bursts | Decoding Strategy                  |
+|-------------|------------------------------------|
+| 1           | Fast EOM / `NNNN` only             |
+| 2           | Error detection (equality checks)  |
+| 3           | Error correction (bit voting)      |
+
+SAME messages are always transmitted three times, in separate "bursts," for
+redundancy. When decoding the start of message *headers* (`ZCZC`), `samedec`
+will use all three bursts together to improve decoding—if possible.
+
+If one retransmission is missed, `samedec` will automatically fall back to
+decoding with only two bursts. The decoder imposes a delay of approximately
+**1.311 seconds** on all received headers. This delay is not usually
+problematic as most SAME messages are prefixed with a Warning Alarm Tone that
+is not information-bearing.
+
+The message *trailers* are not subject to the same error-correction process
+and delay as the headers. The end-of-message indicator (`NNNN`) will be
+printed just soon as it is received and decoded.
+
+The modem contains duplicate-suppression logic. Identical messages which
+arrive within a window of approximately **10.86 seconds** of each other will
+be suppressed and not emitted.
+
+The modem is separated into two parts:
+
+1. the "*link layer*," which converts analog waveforms into framed
+   [`Burst`](https://docs.rs/sameold/latest/sameold/enum.LinkState.html#variant.Burst)s;
+   and
+
+2. the "*transport layer*," assembles individual `Bursts` into `Messages`.
+
+Events from both layers can be captured using the
+[`iter_events()`](https://docs.rs/sameold/latest/sameold/struct.SameReceiver.html#method.iter_events)
+method instead of `iter_messages()`. The events iterator can be used to obtain
+raw framed
+[bursts](https://docs.rs/sameold/latest/sameold/struct.SameEvent.html#method.burst)
+without delay or error-correction. Events can also report the detection of SAME
+carrier signals before and during message decoding.
 
 ### Interpreting Messages
 
