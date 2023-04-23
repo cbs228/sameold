@@ -27,7 +27,7 @@
 //! Further reading on NLMS can be found
 //! <https://matousc89.github.io/padasip/sources/filters/nlms.html>.
 
-use crate::filter::{FilterCoeff, Window};
+use super::filter::{FilterCoeff, Window};
 
 #[cfg(not(test))]
 use log::debug;
@@ -149,7 +149,7 @@ impl Equalizer {
     ///
     /// Process a slice of 16 samples (8 symbols)(8 bits), which
     /// must already be aligned to a byte boundary by
-    /// [`CodeAndPowerSquelch`](crate::codesquelch::CodeAndPowerSquelch)
+    /// [`CodeAndPowerSquelch`](super::codesquelch::CodeAndPowerSquelch)
     /// or some other mechanism. The `byte_samples` must have
     /// symbol estimates in odd indices like
     ///
@@ -394,11 +394,10 @@ impl std::error::Error for NoTrainingSequenceErr {
 
 #[cfg(test)]
 mod tests {
+    use super::super::waveform;
     use super::*;
 
     use assert_approx_eq::assert_approx_eq;
-
-    use crate::waveform::bytes_to_samples;
 
     /// The Proakis B fading channel
     const PROAKIS_B: &[f32] = &[0.407, 0.815, 0.407];
@@ -524,16 +523,16 @@ mod tests {
     // Test a complicated channel
     #[test]
     fn test_estimate_symbol_training() {
-        let mut uut = Equalizer::new(8, 4, 0.2, 1.0e-5, Some(crate::waveform::PREAMBLE_SYNC_WORD));
+        let mut uut = Equalizer::new(8, 4, 0.2, 1.0e-5, Some(waveform::PREAMBLE_SYNC_WORD));
         uut.train().expect("training mode");
         assert_eq!(
             uut.mode,
-            EqualizerState::EnabledTraining(crate::waveform::PREAMBLE_SYNC_WORD, 0)
+            EqualizerState::EnabledTraining(waveform::PREAMBLE_SYNC_WORD, 0)
         );
 
         // let's see what happens when we train on a set of symbols
         // but receive the exact opposite of it
-        let chansig = bytes_to_samples(&[0x54, 0x54], 2);
+        let chansig = waveform::bytes_to_samples(&[0x54, 0x54], 2);
 
         let _rxsig0: Vec<(bool, f32)> = chansig
             .chunks(2)
@@ -566,7 +565,7 @@ mod tests {
         uut.reset();
         uut.train().expect("training mode err");
 
-        let chansig = bytes_to_samples(&[0xAB, 0xAB, 0xAB, 0xAB], 2);
+        let chansig = waveform::bytes_to_samples(&[0xAB, 0xAB, 0xAB, 0xAB], 2);
         let _rxsig3: Vec<(bool, f32)> = chansig
             .chunks(2)
             .map(|sa| uut.estimate_symbol(sa))
@@ -579,7 +578,7 @@ mod tests {
 
     #[test]
     fn test_input() {
-        let chansig = bytes_to_samples(&[0xAB, 0xBA], 2);
+        let chansig = waveform::bytes_to_samples(&[0xAB, 0xBA], 2);
         let mut uut = Equalizer::new(8, 4, 0.2, 1.0e-5, None);
         let out: Vec<(u8, f32)> = chansig.chunks(16).map(|sa| uut.input(sa)).collect();
 

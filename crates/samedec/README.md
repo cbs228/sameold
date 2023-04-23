@@ -177,32 +177,49 @@ broken.
 > ```txt
 > ZCZC-EAS-RWT-012057-012081-012101-012103-012115+0030-2780415-WTSP/TV-
 > NNNN
-> NNNN
-> NNNN
 > ```
 
 When `samedec` receives a SAME message, the message is printed to stdout. The
 printout uses the SAME ASCII encoding that is transmitted over the air.
 
-Exactly one message is printed per line. Only messages are printed. SAME
-*headers* which indicate the beginning of a message are prefixed with `ZCZC`.
-Some validation is performed to ensure that headers have the correct format, but
-they may still contain invalid dates or unknown event codes.
+Exactly one message is printed per line. Only messages are printed.
 
-SAME messages are always transmitted three times for redundancy. When decoding
-the message header, `samedec` will use all three transmissions together to
-improve decoding. Only one line will be output for the `ZCZC` header.
+* SAME *headers*, which indicate the beginning of a message, are prefixed with
+  `ZCZC`. Some validation is performed to ensure that headers have the correct
+  format, but they may still contain invalid dates or unknown event codes.
 
-SAME *trailers* which indicate the end of message are output as `NNNN`. The
-trailers are not subject to the same error-correction process as the headers.
-All trailers which successfully decode will print an `NNNN` line. Up to three
-of these lines will be printed per SAME message. This decoding strategy permits
-end of message to be detected more quickly.
+* SAME *trailers*, which indicate the end of message, are output as `NNNN`.
 
 [`dsame`](https://github.com/cuppa-joe/dsame)
 is a python decoder which can produce human-readable text from this output.
 The [`sameold`](https://crates.io/crates/sameold) crate also understands how to
 parse message fields.
+
+## Modem Behavior
+
+| # of Bursts | Decoding Strategy                  |
+|-------------|------------------------------------|
+| 1           | Fast EOM / `NNNN` only             |
+| 2           | Error detection (equality checks)  |
+| 3           | Error correction (bit voting)      |
+
+SAME messages are always transmitted three times, in separate "bursts," for
+redundancy. When decoding the start of message *headers* (`ZCZC`), `samedec`
+will use all three bursts together to improve decoding—if possible.
+
+If one retransmission is missed, `samedec` will automatically fall back to
+decoding with only two bursts. The decoder imposes a delay of approximately
+**1.311 seconds** on all received headers. This delay is not usually problematic
+as most SAME messages are prefixed with a Warning Alarm Tone that is not
+information-bearing.
+
+The message *trailers* are not subject to the same error-correction process and
+delay as the headers. The end-of-message indicator (`NNNN`) will be printed just
+soon as it is received and decoded.
+
+The modem contains duplicate-suppression logic. Identical messages which arrive
+within a window of approximately **10.86 seconds** of each other will be
+suppressed and not emitted.
 
 ## Child Processes
 

@@ -59,7 +59,12 @@ interference (ISI) and non-flat channel frequency response. The output of the
 adaptive filter is a byte stream.
 
 The bytes are then provided to a framer (`framing.rs`). Like all framers, this
-framer is responsible for detecting when messages begin or end. For SAME, the
-framer has a more unusual job. SAME messages are repeated three times. The
-framer must detect each of these three "bursts," perform a 2-of-3 bitwise parity
-correction, and present the fully-assembled message.
+framer is responsible for detecting when messages begin or end.
+
+### Transport-layer processing
+
+SAME messages are repeated three times for redundancy. The assemble
+(`assembler.rs`) is responsible for combining up to three bursts together into
+a single `Message` estimate. The assembler performs 2-of-3 bitwise parity
+correction, where applicable, and produces fully-formed `Message` estimates
+for the client.

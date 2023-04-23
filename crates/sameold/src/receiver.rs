@@ -1,23 +1,42 @@
 //! Full receiver chain
 
+mod agc;
+mod assembler;
+mod builder;
+mod codesquelch;
+mod combiner;
+mod dcblock;
+mod demod;
+mod equalize;
+mod filter;
+mod framing;
+mod output;
+mod symsync;
+mod timeddata;
+mod waveform;
+
 #[cfg(not(test))]
-use log::{info, trace, warn};
+use log::{debug, info, trace, warn};
 
 #[cfg(test)]
-use std::{println as trace, println as info, println as warn};
+use std::{println as debug, println as trace, println as info, println as warn};
 
 use std::convert::From;
 use std::iter::{IntoIterator, Iterator};
 
-use crate::agc::Agc;
-use crate::builder::{EqualizerBuilder, SameReceiverBuilder};
-use crate::codesquelch::{CodeAndPowerSquelch, SquelchState};
-use crate::dcblock::DCBlocker;
-use crate::demod::{Demod, FskDemod};
-use crate::equalize::Equalizer;
-use crate::framing::{FrameOut, Framer};
-use crate::message::Message;
-use crate::symsync::TimingLoop;
+pub use self::builder::{EqualizerBuilder, SameReceiverBuilder};
+pub use self::output::{LinkState, SameEvent, SameEventType, TransportState};
+
+use crate::Message;
+
+use self::agc::Agc;
+use self::assembler::Assembler;
+use self::codesquelch::{CodeAndPowerSquelch, SquelchState};
+use self::dcblock::DCBlocker;
+use self::demod::{Demod, FskDemod};
+use self::equalize::Equalizer;
+use self::framing::Framer;
+use self::symsync::{SymbolEstimate, TimingLoop};
 
 /// A complete SAME/EAS receiver chain
 ///
@@ -57,11 +76,14 @@ pub struct SameReceiver {
     squelch: CodeAndPowerSquelch,
     equalizer: Equalizer,
     framer: Framer,
+    assembler: Assembler,
     timing_bandwidth_unlocked: f32,
     timing_bandwidth_locked: f32,
     input_rate: u32,
     input_sample_counter: u64,
-    last_state: FrameOut,
+    link_state: LinkState,
+    transport_state: TransportState,
+    event_queue: std::collections::VecDeque<SameEvent>,
     ted_sample_clock: u32,
     samples_until_next_ted: f32,
     force_eom_at_sample: Option<u64>,
@@ -71,7 +93,7 @@ impl SameReceiver {
     /// Decode events and messages from a source of audio
     ///
     /// Bind an iterator which will consume the `input` and
-    /// produce SAME [`FrameOut`] events, which include:
+    /// produce SAME [`SameEvent`] events, which include:
     ///
     /// * notifications about acquired and dropped carrier,
     /// * attempts to frame messages; and
@@ -94,14 +116,13 @@ impl SameReceiver {
     /// instead if you are only interested in successful
     /// decodes.
     #[must_use = "iterators are lazy and do nothing unless consumed"]
-    pub fn iter_frames<'rx, I, T>(&'rx mut self, input: I) -> SourceIterFrames<'rx, T>
+    pub fn iter_events<'rx, I>(&'rx mut self, input: I) -> impl Iterator<Item = SameEvent> + 'rx
     where
-        I: IntoIterator<Item = f32> + IntoIterator<IntoIter = T>,
-        T: Iterator<Item = f32>,
+        I: IntoIterator<Item = f32> + 'rx,
     {
-        SourceIterFrames {
-            source: input.into_iter(),
+        SameReceiverIter {
             receiver: self,
+            source: input.into_iter(),
         }
     }
 
@@ -113,7 +134,7 @@ impl SameReceiver {
     /// events, such as acquisition of signal or decoding
     /// failures, are not reported. If you are interested in
     /// these events, use
-    /// [`iter_frames()`](SameReceiver::iter_frames) instead.
+    /// [`iter_events()`](SameReceiver::iter_events) instead.
     ///
     /// The `input` must be f32 PCM mono audio at
     /// the [`input_rate()`](SameReceiver::input_rate) for this
@@ -128,15 +149,12 @@ impl SameReceiver {
     /// return `None` if the input is exhausted and there
     /// are no new messages.
     #[must_use = "iterators are lazy and do nothing unless consumed"]
-    pub fn iter_messages<'rx, I, T>(&'rx mut self, input: I) -> SourceIterMsg<'rx, T>
+    pub fn iter_messages<'rx, I>(&'rx mut self, input: I) -> impl Iterator<Item = Message> + 'rx
     where
-        I: IntoIterator<Item = f32> + IntoIterator<IntoIter = T>,
-        T: Iterator<Item = f32>,
+        I: IntoIterator<Item = f32> + 'rx,
     {
-        SourceIterMsg(SourceIterFrames {
-            source: input.into_iter(),
-            receiver: self,
-        })
+        self.iter_events(input)
+            .filter_map(|evt| evt.into_message_ok())
     }
 
     /// Input sampling rate
@@ -166,8 +184,11 @@ impl SameReceiver {
         self.squelch.reset();
         self.equalizer.reset();
         self.framer.reset();
+        self.assembler.reset();
         self.input_sample_counter = 0;
-        self.last_state = FrameOut::NoCarrier;
+        self.link_state = LinkState::NoCarrier;
+        self.transport_state = TransportState::Idle;
+        self.event_queue.clear();
         self.ted_sample_clock = 0;
         self.samples_until_next_ted = self.symsync.samples_per_ted();
         self.force_eom_at_sample = None;
@@ -190,26 +211,133 @@ impl SameReceiver {
     /// You probably want to [`reset()`](#method.reset) after
     /// calling this method.
     pub fn flush(&mut self) -> Option<Message> {
-        let two_seconds_of_zeros = std::iter::repeat(0.0f32)
-            .zip(0..self.input_rate * 2)
+        let four_seconds_of_zeros = std::iter::repeat(0.0f32)
+            .zip(0..self.input_rate * 4)
             .map(|(sa, _)| sa);
-        let mut out = None;
-        for evt in self.iter_frames(two_seconds_of_zeros) {
-            match evt {
-                FrameOut::Ready(Ok(msg)) => out = Some(msg),
-                _ => {}
-            }
+        for msg in self.iter_messages(four_seconds_of_zeros) {
+            return Some(msg);
         }
-        out
+        None
     }
 
-    // Process a single high-rate sample
-    //
-    // Accepts a signed 16-bit PCM audio sample as `input`
-    // and processes it for SAME messages. If the system's
-    // state changes, a [`FrameOut`] is emitted.
+    /// Process a sample
+    ///
+    /// Reads the given iterator of floating-point PCM audio samples.
+    /// The audio is demodulated and processed until it is either
+    /// exhausted or an event of interest to the modem occurs. If
+    /// one does, it is emitted.
     #[inline]
-    fn process_high_rate(&mut self, input: f32) -> Option<FrameOut> {
+    fn process<I>(&mut self, audio_iter: &mut I) -> Option<SameEvent>
+    where
+        I: Iterator<Item = f32>,
+    {
+        // emit existing events
+        while let Some(evt) = self.event_queue.pop_front() {
+            return Some(evt);
+        }
+
+        // read audio source, process through all layers
+        for sample in audio_iter {
+            // link-layer processing
+            if let Some(link_state) = self.process_linklayer_high_rate(sample) {
+                if link_state != self.link_state {
+                    // report change
+                    self.link_state = link_state.clone();
+                    self.event_queue.push_back(SameEvent::new(
+                        self.link_state.clone(),
+                        self.input_sample_counter,
+                    ));
+                }
+
+                // transport-layer processing
+                if let Some(transport_state) = self
+                    .process_transportlayer(&link_state)
+                    .filter(|newstate| newstate != &self.transport_state)
+                {
+                    self.transport_state = transport_state;
+                    self.event_queue.push_back(SameEvent::new(
+                        self.transport_state.clone(),
+                        self.input_sample_counter,
+                    ));
+                }
+
+                if let Some(evt) = self.event_queue.pop_front() {
+                    return Some(evt);
+                }
+            }
+        }
+
+        None
+    }
+
+    // Transport-layer processing
+    //
+    // Accepts the new link state. New Bursts are immediately
+    // processed through the Assembler. Idle checks are also
+    // conducted to:
+    //
+    // 1. Detect "lingering" SAME messages which exceed the
+    //    maximum voice message length
+    //
+    // 2. Advise the Assembler if no further Bursts are
+    //    forthcoming
+    //
+    // Returns new transport-layer state if one is available.
+    #[inline]
+    #[must_use]
+    fn process_transportlayer(&mut self, link_state: &LinkState) -> Option<TransportState> {
+        let transport = match (link_state, self.force_eom_at_sample) {
+            (LinkState::Burst(burst_bytes), _) => {
+                // Process this burst
+                Some(
+                    self.assembler
+                        .assemble(burst_bytes, self.squelch.symbol_count()),
+                )
+            }
+            (LinkState::NoCarrier, Some(eom_timeout))
+                if self.input_sample_counter > eom_timeout =>
+            {
+                // Timed out waiting for EOM. Manually emit one.
+                warn!(
+                    "voice message timeout ({} s) exceeded; forcing end-of-message now",
+                    Self::MAX_MESSAGE_DURATION_SECS
+                );
+                Some(TransportState::Message(Ok(Message::EndOfMessage)))
+            }
+            (LinkState::NoCarrier, _) => {
+                // Perform idle processing
+                Some(self.assembler.idle(self.squelch.symbol_count()))
+            }
+            (_, _) => None,
+        }?;
+
+        match &transport {
+            TransportState::Message(Ok(Message::StartOfMessage(_))) => {
+                // set a timer to ensure we will eventually produce an EOM
+                // if we miss receipt
+                self.force_eom_at_sample = Some(
+                    self.input_sample_counter
+                        + Self::MAX_MESSAGE_DURATION_SECS * self.input_rate as u64,
+                );
+            }
+            TransportState::Message(Ok(Message::EndOfMessage)) => {
+                self.force_eom_at_sample = None;
+            }
+            _ => {}
+        };
+
+        Some(transport)
+    }
+
+    // Link-layer processing of one high-rate sample
+    //
+    // Accepts a floating-point PCM audio sample as `input`
+    // and updates the data link layer. Returns the updated
+    // link state if a "low-rate" sample was processed or
+    // `None` if only high-rate processing was performed.
+    #[inline]
+    #[must_use]
+    fn process_linklayer_high_rate(&mut self, input: f32) -> Option<LinkState> {
         // high-rate processing: dc block, agc, and push onto demodulator's buffer
         let sa = self.agc.input(self.dc_block.filter(input));
         self.demod.push_scalar(sa);
@@ -220,51 +348,10 @@ impl SameReceiver {
         // positive → before time, negative → after time
         let clock_remaining_sa = self.samples_until_next_ted - self.ted_sample_clock as f32;
         if clock_remaining_sa <= 0.0f32 || clock_remaining_sa.abs() < 0.5f32 {
+            // process low-rate sample and look for state changes
             self.ted_sample_clock = 0;
-            let out = self.process_low_rate(clock_remaining_sa)?;
-            if out != self.last_state {
-                match &out {
-                    FrameOut::Reading => {
-                        // prevent sync-like sequences in the message data
-                        // from changing the sync
-                        self.squelch.lock(true);
-                    }
-                    FrameOut::NoCarrier => self.end(),
-                    FrameOut::Ready(Ok(Message::StartOfMessage(_))) => {
-                        // set timeout for maximum length of voice message
-                        self.end();
-                        self.force_eom_at_sample = Some(
-                            self.input_sample_counter
-                                + Self::MAX_MESSAGE_DURATION_SECS * self.input_rate as u64,
-                        );
-                    }
-                    FrameOut::Ready(Ok(Message::EndOfMessage)) => {
-                        self.end();
-                        self.force_eom_at_sample = None
-                    }
-                    FrameOut::Ready(_) => {
-                        self.end();
-                    }
-                    _ => {}
-                }
-                self.last_state = out.clone();
-                Some(out)
-            } else {
-                // No change
-                None
-            }
-        } else if let Some(timeout) = self.force_eom_at_sample {
-            // Handle timeout
-            if self.input_sample_counter > timeout {
-                warn!(
-                    "voice message timeout ({} s) exceeded; forcing end-of-message now",
-                    Self::MAX_MESSAGE_DURATION_SECS
-                );
-                self.force_eom_at_sample = None;
-                Some(FrameOut::Ready(Ok(Message::EndOfMessage)))
-            } else {
-                None
-            }
+            let symbol_est = self.process_linklayer_low_rate(clock_remaining_sa)?;
+            Some(self.process_linklayer_symbol(&symbol_est))
         } else {
             None
         }
@@ -278,7 +365,12 @@ impl SameReceiver {
     // high-rate samples.
     // * positive → before time
     // * negative → after time
-    fn process_low_rate(&mut self, clock_remaining_sa: f32) -> Option<FrameOut> {
+    //
+    // Performs demodulation and bit timing error detection.
+    // If a bit estimate is ready, returns it. Otherwise, returns
+    // `None`.
+    #[must_use]
+    fn process_linklayer_low_rate(&mut self, clock_remaining_sa: f32) -> Option<SymbolEstimate> {
         // 1. demod from window
         let sa_low = self.demod.demod();
 
@@ -296,25 +388,54 @@ impl SameReceiver {
             );
         }
 
+        Some(bit_samples)
+    }
+
+    // Process a bit estimate from the bit timing error detector
+    //
+    // Performs byte synchronization against the SAME preamble
+    // (`0xAB`) and framing.
+    //
+    // Returns updated link state if carrier was detected and
+    // the signal was processed all the way through to the framer.
+    // Otherwise, returns `None`.
+    #[inline]
+    #[must_use]
+    fn process_linklayer_symbol(&mut self, symbol: &SymbolEstimate) -> LinkState {
         // 3. power and access code correlation squelch
-        let squelch_out = self.squelch.input(&bit_samples.data)?;
-        let is_resync = match &squelch_out.state {
-            SquelchState::Acquired => {
+        let (is_resync, squelch_out) = match self.squelch.input(&symbol.data) {
+            SquelchState::NoCarrier => {
+                // end any frame in progress
+                return self.framer.end();
+            }
+            SquelchState::DroppedCarrier => {
+                // end any frame in progress, and reset DSP
+                self.end();
+                return self.framer.end();
+            }
+            SquelchState::Reading => {
+                // byte not yet ready
+                return self.framer.state();
+            }
+            SquelchState::Ready(true, byte_est) => {
                 // when byte sync is achieved, lock down the AGC
                 // and bit synchronizer. Put the equalizer
                 // in training mode
+                debug!(
+                    "[{:<14}]: entering tracking mode",
+                    self.input_sample_counter()
+                );
                 self.agc.lock(true);
                 self.symsync
                     .set_loop_bandwidth(self.timing_bandwidth_locked);
                 self.equalizer
                     .train()
                     .expect("equalizer missing training sequence");
-                true
+                (true, byte_est)
             }
-            SquelchState::Reading => false,
-            SquelchState::Dropped => {
-                // end the framer now
-                return Some(self.framer.end(squelch_out.symbol_counter));
+            SquelchState::Ready(false, byte_est) => {
+                // byte ready, no resync
+                (false, byte_est)
             }
         };
 
@@ -322,19 +443,31 @@ impl SameReceiver {
         let (byte_est, adaptive_err) = self.equalizer.input(&squelch_out.samples);
 
         trace!(
-            "byte: {:#04x} \"{:?}\", sym err: {:0.2}, sym pwr: {:0.2}, adapt err: {:0.2}",
+            "byte: {:#04x} \"{:?}\", sym pwr: {:0.2}, adapt err: {:0.2}",
             byte_est,
             byte_est as char,
-            bit_samples.err,
             squelch_out.power,
             adaptive_err
         );
 
         // 5. framing
-        Some(
-            self.framer
-                .input(byte_est, squelch_out.symbol_counter, is_resync),
-        )
+        let link_state = self
+            .framer
+            .input(byte_est, squelch_out.symbol_counter, is_resync);
+        match &link_state {
+            LinkState::Reading => {
+                // prevent sync-like sequences in the message data
+                // from changing the sync
+                self.squelch.lock(true);
+            }
+            LinkState::NoCarrier | LinkState::Burst(_) => {
+                // reset DSP
+                self.end()
+            }
+            _ => {}
+        }
+
+        link_state
     }
 
     // Handle "no carrier" / loss of signal
@@ -347,6 +480,10 @@ impl SameReceiver {
         self.symsync
             .set_loop_bandwidth(self.timing_bandwidth_unlocked);
         self.symsync.reset();
+        debug!(
+            "[{:<14}]: returning to acquisition mode",
+            self.input_sample_counter()
+        );
     }
 
     // Maximum length of a SAME/EAS voice message
@@ -363,7 +500,7 @@ impl From<&SameReceiverBuilder> for SameReceiver {
     /// Create the SAME Receiver from its Builder
     fn from(cfg: &SameReceiverBuilder) -> Self {
         let input_rate = cfg.input_rate();
-        let sps = crate::waveform::samples_per_symbol(input_rate);
+        let sps = waveform::samples_per_symbol(input_rate);
         let (timing_bandwidth_unlocked, timing_bandwidth_locked) = cfg.timing_bandwidth();
         let (power_open, power_close) = cfg.squelch_power();
         let dc_block = DCBlocker::new((cfg.dc_blocker_length() * sps) as usize);
@@ -375,7 +512,7 @@ impl From<&SameReceiverBuilder> for SameReceiver {
         let demod = FskDemod::new_from_same(cfg.input_rate());
         let symsync = TimingLoop::new(sps, timing_bandwidth_unlocked, cfg.timing_max_deviation());
         let code_squelch = CodeAndPowerSquelch::new(
-            crate::waveform::PREAMBLE_SYNC_WORD,
+            waveform::PREAMBLE_SYNC_WORD,
             cfg.preamble_max_errors(),
             power_open,
             power_close,
@@ -390,7 +527,7 @@ impl From<&SameReceiverBuilder> for SameReceiver {
             eqcfg.filter_order().1,
             eqcfg.relaxation(),
             eqcfg.regularization(),
-            Some(crate::waveform::PREAMBLE_SYNC_WORD),
+            Some(waveform::PREAMBLE_SYNC_WORD),
         );
         let framer = Framer::new(cfg.frame_prefix_max_errors(), cfg.frame_max_invalid());
 
@@ -404,11 +541,14 @@ impl From<&SameReceiverBuilder> for SameReceiver {
             squelch: code_squelch,
             equalizer,
             framer,
+            assembler: Assembler::default(),
             timing_bandwidth_unlocked,
             timing_bandwidth_locked,
             input_rate,
             input_sample_counter: 0,
-            last_state: FrameOut::NoCarrier,
+            link_state: LinkState::NoCarrier,
+            transport_state: TransportState::Idle,
+            event_queue: std::collections::VecDeque::with_capacity(2),
             ted_sample_clock: 0,
             samples_until_next_ted,
             force_eom_at_sample: None,
@@ -416,16 +556,8 @@ impl From<&SameReceiverBuilder> for SameReceiver {
     }
 }
 
-/// Sample source iterator
-///
-/// This iterator is bound to a source of mono f32 PCM
-/// audio samples. Calling the `next()` method will
-/// return the next [`FrameOut`]
-/// event from the SAME Receiver or `None` if the
-/// available samples have been consumed without any
-/// new events.
 #[derive(Debug)]
-pub struct SourceIterFrames<'rx, I>
+struct SameReceiverIter<'rx, I>
 where
     I: Iterator<Item = f32>,
 {
@@ -433,69 +565,17 @@ where
     receiver: &'rx mut SameReceiver,
 }
 
-impl<'rx, 'data, I> Iterator for SourceIterFrames<'rx, I>
+impl<'rx, 'data, I> Iterator for SameReceiverIter<'rx, I>
 where
     I: Iterator<Item = f32>,
 {
-    type Item = FrameOut;
+    type Item = SameEvent;
 
     fn next(&mut self) -> Option<Self::Item> {
-        for sa in &mut self.source {
-            match self.receiver.process_high_rate(sa) {
-                Some(out) => {
-                    info!(
-                        "receiver [{:<14}]: {:?}",
-                        self.receiver.input_sample_counter(),
-                        out
-                    );
-                    return Some(out);
-                }
-                _ => continue,
-            }
-        }
-
-        None
-    }
-}
-
-/// Sample source iterator (messages only)
-///
-/// This iterator is bound to a source of mono f32 PCM
-/// audio samples. Calling the `next()` method will
-/// return the next [`Message`] from the SAME Receiver
-/// or `None` if the available samples have been
-/// consumed without any new events.
-///
-/// This iterator returns successful message decodes
-/// only. If you want more events, see
-/// [`SourceIter`].
-#[derive(Debug)]
-pub struct SourceIterMsg<'rx, I>(SourceIterFrames<'rx, I>)
-where
-    I: Iterator<Item = f32>;
-
-impl<'rx, 'data, I> Iterator for SourceIterMsg<'rx, I>
-where
-    I: Iterator<Item = f32>,
-{
-    type Item = Message;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        for sa in &mut self.0.source {
-            match self.0.receiver.process_high_rate(sa) {
-                Some(FrameOut::Ready(Ok(msg))) => {
-                    info!(
-                        "receiver [{:<14}]: {:?}",
-                        self.0.receiver.input_sample_counter(),
-                        msg
-                    );
-                    return Some(msg);
-                }
-                _ => continue,
-            }
-        }
-
-        None
+        self.receiver.process(&mut self.source).and_then(|evt| {
+            info!("{}", &evt);
+            Some(evt)
+        })
     }
 }
 
@@ -512,8 +592,6 @@ mod tests {
 
     use std::io::Write;
 
-    use crate::waveform::{bytes_to_samples, modulate_afsk};
-
     const TEST_MESSAGE: &str = "ZCZC-EAS-DMO-372088-091724-919623-645687-745748-175234-039940-955869-091611-304171-931612-334828-179485-569615-809223-830187-611340-014693-472885-084645-977764-466883-406863-390018-701741-058097-752790-311648-820127-255900-581947+0000-0001122-NOCALL00-";
 
     // this method exists to allow us to dump the modulated
@@ -527,39 +605,75 @@ mod tests {
         }
     }
 
-    fn make_test_message() -> Vec<u8> {
-        const PREAMBLE: &[u8] = &[crate::waveform::PREAMBLE; 16];
+    fn make_test_message(payload: &[u8]) -> Vec<u8> {
+        const PREAMBLE: &[u8] = &[waveform::PREAMBLE; 16];
 
         let mut message: Vec<u8> = vec![];
         message.extend_from_slice(PREAMBLE);
-        message.extend_from_slice(TEST_MESSAGE.as_bytes());
+        message.extend_from_slice(payload);
         message
     }
 
     // Create test burst
     //
     // Returns waveform and number of samples per symbol, at 22.5 kSa/s
-    // The returned waveform has all three bursts.
-    fn make_test_burst(msg: &[u8]) -> (Vec<f32>, usize) {
-        let sample_low = bytes_to_samples(msg, 1);
-        let (sample_high, sps) = modulate_afsk(&sample_low, 22050);
+    // The returned waveform has `num_bursts` bursts (minimum 1)
+    fn make_test_burst(msg: &[u8], num_bursts: usize) -> (Vec<f32>, usize) {
+        let sample_low = waveform::bytes_to_samples(msg, 1);
+        let (sample_high, sps) = waveform::modulate_afsk(&sample_low, 22050);
 
         // scale like we're using i16, deliberately not using full arithmetic range
         let burst: Vec<f32> = sample_high.iter().map(|&v| (v * 16384.0f32)).collect();
 
         let mut out = burst.clone();
-        for _i in 0..2 {
+        for _i in 1..num_bursts {
             out.extend(std::iter::repeat(0.0f32).take(22050));
             out.extend(burst.iter());
         }
-        out.extend(std::iter::repeat(0.0f32).take(22050));
+        out.extend(std::iter::repeat(0.0f32).take(2 * 22050));
 
         (out, sps)
     }
 
     #[test]
+    fn test_iter_events() {
+        let (afsk, _) = make_test_burst(&make_test_message(TEST_MESSAGE.as_bytes()), 1);
+
+        let mut rx = SameReceiverBuilder::new(22050)
+            .with_timing_max_deviation(0.01)
+            .build();
+
+        let mut found = 0usize;
+        for (idx, evt) in rx.iter_events(afsk.iter().map(|sa| *sa)).enumerate() {
+            match (idx, evt.what()) {
+                (0, SameEventType::Link(LinkState::Searching)) => {
+                    found += 1;
+                }
+                (1, SameEventType::Link(LinkState::Reading)) => {
+                    found += 1;
+                }
+                (2, SameEventType::Link(LinkState::Burst(data))) => {
+                    assert!(data.starts_with(TEST_MESSAGE.as_bytes()));
+                    found += 1;
+                }
+                (3, SameEventType::Transport(TransportState::Assembling)) => {
+                    found += 1;
+                }
+                (4, SameEventType::Link(LinkState::NoCarrier)) => {
+                    found += 1;
+                }
+                _ => {
+                    unreachable!()
+                }
+            }
+        }
+
+        assert_eq!(found, 5);
+    }
+
+    #[test]
     fn test_top_level_receiver() {
-        let (afsk, _) = make_test_burst(&make_test_message());
+        let (afsk, _) = make_test_burst(&make_test_message(TEST_MESSAGE.as_bytes()), 3);
 
         // uncomment me to dump the output
         //dump_file(&afsk, "output.bin");
@@ -570,22 +684,19 @@ mod tests {
 
         println!("{:?}", rx);
 
-        let mut out: Option<crate::Message> = None;
-        for evt in rx.iter_frames(afsk.iter().map(|sa| *sa)) {
-            if let FrameOut::Ready(Ok(msg)) = evt {
-                out = Some(msg);
-            }
-        }
-
-        assert_eq!(TEST_MESSAGE, out.expect("expected message").as_str());
+        let out = rx
+            .iter_messages(afsk.iter().map(|sa| *sa))
+            .next()
+            .expect("expected message");
+        assert_eq!(TEST_MESSAGE, out.as_str());
 
         // we're waiting for EOM
         assert!(rx.force_eom_at_sample.is_some());
 
         // force EOM due to timeout
-        //   we flush with two seconds of zeros, so putting us 1 second
+        //   we flush with four seconds of zeros, so putting us 3 seconds
         //   away from timeout will get the job done during a flush()
-        rx.input_sample_counter = rx.force_eom_at_sample.unwrap() - rx.input_rate as u64;
+        rx.input_sample_counter = rx.force_eom_at_sample.unwrap() - 3 * rx.input_rate as u64;
         let msg = rx.flush();
         assert_eq!(Some(Message::EndOfMessage), msg);
     }
