@@ -1,5 +1,6 @@
 [package]
 name = "samedec"
+rust-version = "1.64"
 description = "A SAME/EAS digital receiver and alerting program"
 version = "0.3.0"
 authors = ["Colin S <3526918+cbs228@users.noreply.github.com>"]
