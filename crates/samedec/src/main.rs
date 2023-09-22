@@ -3,6 +3,7 @@ use std::io;
 use anyhow::{anyhow, Context};
 use byteorder::{NativeEndian, ReadBytesExt};
 use clap::Parser;
+use is_terminal::IsTerminal;
 use log::{info, LevelFilter};
 
 use sameold::SameReceiverBuilder;
@@ -90,7 +91,7 @@ fn file_setup<'stdin>(
 ) -> Result<Box<dyn io::BufRead + 'stdin>, anyhow::Error> {
     if args.input_is_stdin() {
         info!("SAME decoder reading standard input");
-        if !atty::is(atty::Stream::Stdin) {
+        if !std::io::stdin().is_terminal() {
             Ok(Box::new(io::BufReader::new(stdin)))
         } else {
             Err(anyhow!(

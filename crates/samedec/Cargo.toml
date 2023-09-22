@@ -12,13 +12,18 @@ readme = "README.md"
 [dependencies]
 sameold = {path = "../sameold", version = "^0.3.0"}
 anyhow = "^1"
-atty = "^0.2"
 byteorder = "^1.4"
-clap = {version = "^4.1", features = ["color", "derive", "wrap_help"]}
+clap = {version = "~4.3", features = ["color", "derive", "wrap_help"]}
+is-terminal = "^0.4"
 log = "^0.4"
-pretty_env_logger = "^0.4"
+pretty_env_logger = "^0.5"
+
+# the following pins are required for Rust 1.68 compatibility
+anstyle = "=1.0.2"
+clap_lex = "=0.5.0"
 
 [dependencies.chrono]
 version = "^0.4"
 default-features = false
 features = ["clock", "std"]
+
