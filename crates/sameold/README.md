@@ -205,6 +205,11 @@ at a baud rate of 520.83 Hz.
   and other fields as true UTC timestamps. If enabled, `chrono`
   becomes part of this crate's public API.
 
+## MSRV Policy
+
+A minimum supported rust version (MSRV) increase will be treated as a minor
+version bump.
+
 ## Contributing
 
 If you have a **recording** of a signal that you think should demodulate, but
