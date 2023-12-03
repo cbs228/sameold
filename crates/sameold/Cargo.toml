@@ -1,6 +1,6 @@
 [package]
 name = "sameold"
-rust-version = "1.61"
+rust-version = "1.65"
 description = "A SAME/EAS digital receiver library"
 version = "0.3.0"
 authors = ["Colin S <3526918+cbs228@users.noreply.github.com>"]

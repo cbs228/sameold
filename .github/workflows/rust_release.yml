@@ -62,7 +62,7 @@ jobs:
 
     env:
       # See <https://hub.docker.com/_/rust> for list of tags
-      BUILD_RUST_TAG: 1.68.0
+      BUILD_RUST_TAG: 1.70.0
       BUILD_OS_GNU: slim-buster
       BUILD_OS_MUSL: alpine
 
