@@ -68,6 +68,7 @@ jobs:
       BUILD_RUST_TAG: 1.70.0
       BUILD_OS_GNU: slim-buster
       BUILD_OS_MUSL: alpine
+      CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
 
     strategy:
       matrix:
@@ -105,11 +106,10 @@ jobs:
         enableCrossOsArchive: true
         fail-on-cache-miss: true
 
-    - name: Workaround for https://github.com/rust-lang/cargo/issues/8719
-      run: |
-        sudo mkdir -p /var/lib/docker
-        sudo mount -t tmpfs -o size=10G none /var/lib/docker
-        sudo systemctl restart docker
+    - name: Set swap space
+      uses: pierotofy/set-swap-space@v1.0
+      with:
+        swap-size-gb: 10
 
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v3
