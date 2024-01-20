@@ -3,7 +3,6 @@ use std::io;
 use anyhow::{anyhow, Context};
 use byteorder::{NativeEndian, ReadBytesExt};
 use clap::Parser;
-use is_terminal::IsTerminal;
 use log::{info, LevelFilter};
 
 use sameold::SameReceiverBuilder;
@@ -91,7 +90,7 @@ fn file_setup<'stdin>(
 ) -> Result<Box<dyn io::BufRead + 'stdin>, anyhow::Error> {
     if args.input_is_stdin() {
         info!("SAME decoder reading standard input");
-        if !std::io::stdin().is_terminal() {
+        if !is_terminal(&std::io::stdin()) {
             Ok(Box::new(io::BufReader::new(stdin)))
         } else {
             Err(anyhow!(
@@ -108,4 +107,20 @@ or similar into this program."
                 .with_context(|| format!("Unable to open --file \"{}\"", args.file))?,
         )))
     }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_terminal<S>(stream: &S) -> bool
+where
+    S: std::os::fd::AsRawFd,
+{
+    terminal_size::terminal_size_using_fd(stream.as_raw_fd()).is_some()
+}
+
+#[cfg(target_os = "windows")]
+fn is_terminal<S>(stream: &S) -> bool
+where
+    S: std::os::windows::io::AsRawHandle,
+{
+    terminal_size::terminal_size_using_handle(stream.as_raw_handle()).is_some()
 }
