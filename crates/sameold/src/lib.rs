@@ -74,7 +74,7 @@
 //! The digital receiver is created via a
 //! [builder](crate::SameReceiverBuilder).
 //!
-//! The [`SameReceiver`](crate::SameReceiver) binds by iterator to any
+//! The [`SameReceiver`] binds by iterator to any
 //! source of `f32` PCM mono (1-channel) audio samples. If you're using `i16`
 //! samples (as most sound cards do), you'll need to cast them to `f32`.
 //! There is no need to scale them as long as you configure the
@@ -204,6 +204,11 @@
 //!   [issuance times](crate::MessageHeader#method.issue_datetime)
 //!   and other fields as true UTC timestamps. If enabled, `chrono`
 //!   becomes part of this crate's public API.
+//!
+//! ## MSRV Policy
+//!
+//! A minimum supported rust version (MSRV) increase will be treated as a minor
+//! version bump.
 //!
 //! ## Contributing
 //!
