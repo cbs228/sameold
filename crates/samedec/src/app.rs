@@ -114,7 +114,8 @@ impl State<Waiting> {
             return Some(msg.into());
         }
 
-        None
+        // end of file; flush any remaining messages out of the decoder
+        Some(receiver.flush()?.into())
     }
 }
 

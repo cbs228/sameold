@@ -48,16 +48,6 @@ fn samedec() -> Result<(), CliError> {
         std::iter::from_fn(|| Some(inbuf.read_i16::<NativeEndian>().ok()?)),
     );
 
-    // flush all data samples out of the decoder
-    match rx.flush() {
-        Some(lastmsg) => {
-            if !args.quiet {
-                println!("{}", lastmsg)
-            }
-        }
-        None => {}
-    }
-
     Ok(())
 }
 
