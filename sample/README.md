@@ -24,3 +24,9 @@ You can play one of these files with sox:
 ```bash
 play -t raw -r 22.05k -e signed -b 16 -c 1 'long_message.22050.s16le.bin'
 ```
+
+You can run all of the samples as an integration test with
+
+```bash
+./test.sh
+```
