@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env sh
 #
 # Runs integration tests for samedec.
 #
@@ -12,12 +12,13 @@
 # The integration tests ensure that samedec's child process
 # spawning and environment variable assignment works.
 
-set -euo pipefail
+set -eu
 
-if [ -n "${SAMEDEC:-}" ]; then
-  RUNARGS=("${SAMEDEC}")
+if [ -z "${SAMEDEC:-}" ]; then
+  SAMEDEC="cargo"
+  ARGS="run -q -p samedec --"
 else
-  RUNARGS=('cargo' 'run' '-q' '-p' 'samedec' '--')
+  ARGS=""
 fi
 
 run_samedec() {
@@ -26,23 +27,29 @@ run_samedec() {
 
   infile="$1"
 
-  "${RUNARGS[@]}" \
+  #shellcheck disable=SC2086
+  "$SAMEDEC" $ARGS \
     --rate 22050 \
     --file "${infile}.bin" \
     -- \
-    bash \
-    "${infile}.bash" | tee /dev/stderr
+    sh \
+    "${infile}.sh"
 }
 
-for file in $(basename -s .bin *.s16le.bin); do
+for file in $(basename -s .bin -- *.s16le.bin); do
   [ -e "${file}.bin" ] || exit 1
 
   printf '[%s]\n' "$file"
 
-  cmp <(run_samedec "$file") "$file.txt" || {
-      printf '[%s]: FAIL\n' "$file"
-      exit 1
-  };
+  output="$(run_samedec "$file")"
+  expect="$(cat "${file}.txt")"
 
-  printf '[%s]: PASS\n' "$file"
+  echo "$output"
+
+  if [ "$output" = "$expect" ]; then
+    printf '[%s]: PASS\n' "$file"
+  else
+    printf '[%s]: FAIL\n' "$file"
+    exit 1
+  fi
 done

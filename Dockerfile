@@ -13,7 +13,7 @@
 ###   set --build-arg CARGO_NET_OFFLINE=true
 
 # Rust version, like "1" or "1.67.0"
-ARG BUILD_RUST_TAG=1.67
+ARG BUILD_RUST_TAG=1.70
 
 # Build operating system
 # Use slim-buster for glibc or alpine for musl
@@ -100,21 +100,13 @@ RUN [ -n "$CARGO_BUILD_TARGET" ] || unset CARGO_BUILD_TARGET && \
     cargo test --frozen --release --workspace && \
     cargo install --frozen --path=crates/samedec
 
-# Perform tests
-RUN samedec --version
+# Perform integration tests
+COPY sample sample
 
-COPY sample/*.22050.s16le.* .
-
-RUN set -e; \
-    for file in $(basename -s .bin *.s16le.bin); do \
-      printf '[%s]\n' "$file"; \
-      samedec -r 22050 <"$file.bin" | tee result; \
-      cmp result "$file.txt" || {\
-        echo "FAIL!"; \
-        exit 1; \
-      }; \
-      echo "PASS"; \
-    done
+RUN samedec --version && \
+    cd sample && \
+    SAMEDEC=/usr/local/bin/samedec ./test.sh && \
+    cd ..
 
 ###
 ### NON-IMAGE

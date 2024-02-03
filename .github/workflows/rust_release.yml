@@ -230,17 +230,9 @@ jobs:
     - name: Run integration tests
       shell: bash
       run: |
-        set -e;
-        "$samedec_exe" --version
-        for file in $(basename -s .bin sample/*.s16le.bin); do
-          printf '[%s]\n' "$file";
-          "$samedec_exe" -r 22050 <"sample/$file.bin" | tee result;
-          cmp result "sample/$file.txt" || {
-            echo "FAIL!";
-            exit 1;
-          };
-          echo "PASS";
-        done
+        pushd sample &&
+        ./test.sh &&
+        popd
 
     - name: Copy artifact
       shell: bash
@@ -316,17 +308,9 @@ jobs:
 
     - name: Run integration tests
       run: |
-        set -e;
-        "$samedec_exe" --version
-        for file in $(basename -s .bin sample/*.s16le.bin); do
-          printf '[%s]\n' "$file";
-          "$samedec_exe" -r 22050 <"sample/$file.bin" | tee result;
-          cmp result "sample/$file.txt" || {
-            echo "FAIL!";
-            exit 1;
-          };
-          echo "PASS";
-        done
+        pushd sample &&
+        ./test.sh &&
+        popd
 
     - name: Copy artifact
       run: |
