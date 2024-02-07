@@ -1,7 +1,8 @@
 //! SAME message ASCII encoding and decoding
 
-mod event;
 mod originator;
+mod phenomenon;
+mod significance;
 
 use std::convert::TryFrom;
 use std::fmt;
@@ -12,10 +13,9 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use thiserror::Error;
 
-pub use event::{
-    EventCode, EventCodeIter, SignificanceLevel, UnknownSignificanceLevel, UnrecognizedEventCode,
-};
 pub use originator::Originator;
+pub use phenomenon::{EventCode, EventCodeIter, UnrecognizedEventCode};
+pub use significance::{SignificanceLevel, UnknownSignificanceLevel};
 
 /// The result of parsing a message
 pub type MessageResult = Result<Message, MessageDecodeErr>;
