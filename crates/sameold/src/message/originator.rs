@@ -1,38 +1,45 @@
 //! Originator code
 
 use std::fmt;
-use std::str::FromStr;
 
 use strum::EnumMessage;
 
 /// SAME message originator code
 ///
-/// See [Message::originator()](crate::Message#method.originator).
-/// Originator codes may be converted `from()` their SAME string
-/// representations. Using them `.as_ref()` or via `Display` will
-/// show a human-readable string.
-///
-/// The variants `NationalWeatherService` and `EnvironmentCanada`
-/// must be constructed using both the originator string and the
-/// station callsign.
+/// See [`MessageHeader::originator()`](crate::MessageHeader::originator).
+/// Originator codes may be also parsed from the SAME
+/// [org code and callsign](Originator::from_org_and_call):
 ///
 /// ```
 /// use sameold::Originator;
 ///
-/// let orig = Originator::from("WXR");
-/// assert_eq!(Originator::WeatherService, orig);
-/// assert_eq!("WXR", orig.as_ref());
-/// assert_eq!("Weather Service", orig.as_display_str());
-/// assert_eq!("Weather Service", &format!("{}", orig));
+/// let orig = Originator::from_org_and_call("WXR", "KLOX/NWS");
+/// assert_eq!(Originator::NationalWeatherService, orig);
 ///
-/// assert_eq!(Originator::Unknown, Originator::from("HUH"));
+/// // other originators
+/// assert_eq!(Originator::Unknown, Originator::from_org_and_call("HUH", ""));
+/// assert_eq!("CIV", Originator::CivilAuthority.as_code_str());
+/// ```
 ///
-/// let orig = Originator::from(("WXR", "KLOX/NWS"));
+/// Originators Display a human-readable string:
+///
+/// ```
+/// # use sameold::Originator;
+/// # let orig = Originator::from_org_and_call("WXR", "KLOX/NWS");
 /// assert_eq!("National Weather Service", orig.as_display_str());
-/// assert_eq!("WXR", orig.as_str());
+/// assert_eq!("National Weather Service", &format!("{}", orig));
+/// assert_eq!("WXR", orig.as_ref());
+/// assert_eq!("WXR", &format!("{:#}", orig));
+/// ```
 ///
+/// The callsign is required to reliably detect the National Weather Service
+/// and/or Environment Canada:
+///
+/// ```
+/// # use sameold::Originator;
 /// assert_eq!(Originator::EnvironmentCanada,
-///            Originator::from(("WXR", "EC/GC/CA")));
+///            Originator::from_org_and_call("WXR", "EC/GC/CA"));
+/// assert_eq!("WXR", Originator::EnvironmentCanada.as_code_str());
 /// ```
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, Hash, strum_macros::EnumMessage, strum_macros::EnumString,
@@ -41,7 +48,7 @@ pub enum Originator {
     /// An unknown (and probably invalid) Originator code
     ///
     /// Per NWSI 10-172, receivers should accept any originator code.
-    #[strum(serialize = "OOO", detailed_message = "Unknown Originator")]
+    #[strum(serialize = "", detailed_message = "Unknown Originator")]
     Unknown,
 
     /// Primary Entry Point station for national activations
@@ -56,16 +63,19 @@ pub enum Originator {
     #[strum(serialize = "CIV", detailed_message = "Civil authorities")]
     CivilAuthority,
 
-    /// National Weather Service or Environment Canada
-    #[strum(serialize = "WXR", detailed_message = "Weather Service")]
-    WeatherService,
-
     /// National Weather Service
-    #[strum(disabled, serialize = "WXR")]
+    #[strum(serialize = "WXR", detailed_message = "National Weather Service")]
     NationalWeatherService,
 
     /// Environment Canada
-    #[strum(disabled, serialize = "WXR")]
+    ///
+    /// In Canada, SAME is only transmitted on the Weatheradio Canada
+    /// radio network to alert weather radios. SAME signals are not
+    /// transmitted on broadcast AM/FM or cable systems.
+    ///
+    /// This enum variant will only be selected if the sending station's
+    /// callsign matches the format of Environment Canada stations.
+    #[strum(message = "WXR", detailed_message = "Environment Canada")]
     EnvironmentCanada,
 
     /// EAS participant (usu. broadcast station)
@@ -77,61 +87,55 @@ pub enum Originator {
 }
 
 impl Originator {
+    /// Construct from originator string and station callsign
+    pub fn from_org_and_call<S1, S2>(org: S1, call: S2) -> Self
+    where
+        S1: AsRef<str>,
+        S2: AsRef<str>,
+    {
+        let decode = str::parse(org.as_ref()).unwrap_or_default();
+        if decode == Self::NationalWeatherService && call.as_ref().starts_with("EC/") {
+            Self::EnvironmentCanada
+        } else {
+            decode
+        }
+    }
+
     /// Human-readable string representation
     ///
     /// Converts to a human-readable string, like "`Civil authorities`."
     pub fn as_display_str(&self) -> &'static str {
-        match self {
-            Originator::NationalWeatherService => "National Weather Service",
-            Originator::EnvironmentCanada => "Environment Canada",
-            _ => self.get_detailed_message().expect("missing definition"),
-        }
+        self.get_detailed_message().expect("missing definition")
     }
 
     /// SAME string representation
     ///
-    /// Returns the three-character SAME code for this
-    /// `Originator`
-    pub fn as_str(&self) -> &'static str {
-        self.get_serializations()[0]
+    /// Returns the SAME code for this `Originator`.
+    /// [`Originator::Unknown`] returns the empty string.
+    pub fn as_code_str(&self) -> &'static str {
+        self.get_message()
+            .unwrap_or_else(|| self.get_serializations()[0])
     }
 }
 
-impl From<&str> for Originator {
-    fn from(s: &str) -> Originator {
-        match Originator::from_str(s) {
-            Ok(orig) => orig,
-            Err(_e) => Originator::Unknown,
-        }
-    }
-}
-
-impl From<(&str, &str)> for Originator {
-    fn from(orig_and_call: (&str, &str)) -> Originator {
-        match Originator::from_str(orig_and_call.0) {
-            Ok(Originator::WeatherService) => {
-                if orig_and_call.1.ends_with("/NWS") {
-                    Originator::NationalWeatherService
-                } else if orig_and_call.1.starts_with("EC/") {
-                    Originator::EnvironmentCanada
-                } else {
-                    Originator::WeatherService
-                }
-            }
-            Ok(orig) => orig,
-            Err(_e) => Originator::Unknown,
-        }
+impl std::default::Default for Originator {
+    fn default() -> Self {
+        Self::Unknown
     }
 }
 
 impl AsRef<str> for Originator {
     fn as_ref(&self) -> &'static str {
-        self.as_str()
+        self.as_code_str()
     }
 }
 
 impl fmt::Display for Originator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.as_display_str().fmt(f)
+        if f.alternate() {
+            self.as_code_str().fmt(f)
+        } else {
+            self.as_display_str().fmt(f)
+        }
     }
 }

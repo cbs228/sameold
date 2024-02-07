@@ -250,9 +250,10 @@ impl MessageHeader {
     /// Originator code
     ///
     /// The ultimate source of the message, such as
-    /// `Originator::WeatherService` for the National Weather Service
+    /// [`Originator::NationalWeatherService`] for the
+    /// National Weather Service
     pub fn originator(&self) -> Originator {
-        Originator::from((self.originator_str(), self.callsign()))
+        Originator::from_org_and_call(self.originator_str(), self.callsign())
     }
 
     /// Originator code (as string)
@@ -811,7 +812,7 @@ mod tests {
         .expect("bad msg");
 
         assert_eq!(msg.originator_str(), "WXR");
-        assert_eq!(Originator::WeatherService, msg.originator());
+        assert_eq!(Originator::NationalWeatherService, msg.originator());
         assert_eq!(msg.event_str(), "RWT");
         assert_eq!(msg.event().unwrap(), EventCode::RequiredWeeklyTest);
         assert_eq!(msg.valid_duration_fields(), (3, 51));
