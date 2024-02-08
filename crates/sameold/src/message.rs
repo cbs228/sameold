@@ -1,5 +1,6 @@
 //! SAME message ASCII encoding and decoding
 
+mod eventcode;
 mod originator;
 mod phenomenon;
 mod significance;
@@ -13,8 +14,9 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use thiserror::Error;
 
+pub use eventcode::EventCode;
 pub use originator::Originator;
-pub use phenomenon::{EventCode, EventCodeIter, UnrecognizedEventCode};
+pub use phenomenon::Phenomenon;
 pub use significance::SignificanceLevel;
 
 /// The result of parsing a message
@@ -134,6 +136,11 @@ impl Message {
 pub struct InvalidDateErr {}
 
 /// Event, area, time, and originator information
+///
+/// The message header is the decoded *digital header* which precedes
+/// the analog SAME message. See
+/// [crate documentation](./index.html#interpreting-messages)
+/// for an example.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MessageHeader {
     // message content, including the leading `ZCZC-`
@@ -278,64 +285,67 @@ impl MessageHeader {
 
     /// Event code
     ///
-    /// Decodes the event code into an enumerated type.
-    /// For example, messages which contain an
-    /// [`event_str()`](#method.event_str) of "`RWT`" will decode
-    /// as [`EventCode::RequiredWeeklyTest`](EventCode#variant.RequiredWeeklyTest).
+    /// Decodes the SAME event code (like `RWT`) into an
+    /// [`EventCode`], which is a combination of:
     ///
-    /// If the event code is unrecognized, an error is returned.
-    /// An error here does **NOT** mean that the message is
-    /// invalid or should be discarded. Instead, if the
-    /// error is
-    /// [`WithSignificance`](UnrecognizedEventCode#variant.WithSignificance),
-    /// then you should treat it as a valid (but unknown)
-    /// message at the given significance level. This will help
-    /// your application react correctly if new codes are
-    /// added in the future.
+    /// * [`phenomenon()`](Phenomenon), which describes what
+    ///   is occurring; and
     ///
-    /// Event codes can be converted to human-readable strings.
+    /// * [`significance()`](SignificanceLevel), which indicates the
+    ///   overall severity and/or how "noisy" or intrusive the alert
+    ///   should be.
+    ///
+    /// `EventCode` Display as a human-readable string which describes
+    /// the SAME code. For example, "`TOR`" displays as "Tornado Warning."
     ///
     /// ```
-    /// use sameold::EventCode;
+    /// # use std::fmt;
+    /// use sameold::{MessageHeader, Phenomenon, SignificanceLevel};
     ///
-    /// assert_eq!("Required Weekly Test", (EventCode::RequiredWeeklyTest).as_display_str());
-    /// assert_eq!(
-    ///     "Required Weekly Test",
-    ///     format!("{}", EventCode::RequiredWeeklyTest)
-    /// );
+    /// let msg = MessageHeader::new("ZCZC-WXR-RWT-012345+0351-3662322-NOCALL  -").unwrap();
+    /// let evt = msg.event();
+    ///
+    /// assert_eq!(evt.phenomenon(), Phenomenon::RequiredWeeklyTest);
+    /// assert_eq!(evt.significance(), SignificanceLevel::Test);
+    /// assert_eq!(format!("{}", evt), "Required Weekly Test");
     /// ```
     ///
-    /// All `EventCode` are mapped to a [significance level](crate::SignificanceLevel).
-    /// This may be useful when deciding how to handle the event.
+    /// The decoder will make every effort to interpret SAME codes it
+    /// does not explicitly know. The `EventCode` might contain only a
+    /// valid significance level—or perhaps not even that.
     ///
     /// ```
-    /// # use sameold::{EventCode, SignificanceLevel};
-    ///
-    /// let lvl = (EventCode::RequiredWeeklyTest).to_significance_level();
-    /// assert_eq!(lvl, SignificanceLevel::Test);
+    /// # use std::fmt;
+    /// # use sameold::{MessageHeader, SignificanceLevel};
+    /// let msg = MessageHeader::new("ZCZC-WXR-OMG-012345+0351-3662322-NOCALL  -").unwrap();
+    /// assert_eq!(msg.event_str(), "OMG");
+    /// assert_eq!(msg.event().to_string(), "Unrecognized Warning");
+    /// assert_eq!(msg.event().significance(), SignificanceLevel::Unknown);
+    /// assert!(msg.event().is_unrecognized());
     /// ```
-    pub fn event(&self) -> Result<EventCode, UnrecognizedEventCode> {
-        EventCode::try_from(self.event_str())
+    ///
+    /// Unrecognized messages are still valid, and clients are encouraged
+    /// to treat them at their [significance](EventCode::significance) level.
+    /// Messages where even the significance level cannot be decoded should
+    /// be treated as Warnings.
+    ///
+    /// [`eventcodes`](crate::eventcodes) contains the complete list of SAME
+    /// codes that are interpreted by `sameold`. See also: [`EventCode`].
+    pub fn event(&self) -> EventCode {
+        EventCode::from(self.event_str())
     }
 
     /// Event code
     ///
-    /// A three-character code which is *generally* formatted
-    /// according to severity level.
+    /// A three-character code like "`RWT`" which describes the phenomenon
+    /// and/or the severity level of the message. Use the
+    /// [`event()`](MessageHeader::event) method to parse this
+    /// code into its components for further processing or for
+    /// a human-readable display.
     ///
-    /// - `xxT`: Test
-    /// - `xxS`: Statement / Advisory
-    /// - `xxA`: Watch
-    /// - `xxW`: Warning (generally most severe events)
-    ///
-    /// Major exceptions to this are the codes `SVR`
-    /// ("Severe Thunderstorm Warning") and `TOR`
-    /// ("Tornado Warning"), which are among the most common
-    /// messages in the United States. Plenty of other codes
-    /// also do not adhere to this standard.
-    ///
-    /// The event code returned is three characters but is
-    /// not guaranteed to be one of the above.
+    /// See [`eventcodes`](crate::eventcodes) for the complete list
+    /// of SAME codes that are interpreted by `sameold`. The string value
+    /// is not guaranteed to be one of these codes.
     pub fn event_str(&self) -> &str {
         &self.message[Self::OFFSET_EVT..Self::OFFSET_EVT + 3]
     }
@@ -814,7 +824,7 @@ mod tests {
         assert_eq!(msg.originator_str(), "WXR");
         assert_eq!(Originator::NationalWeatherService, msg.originator());
         assert_eq!(msg.event_str(), "RWT");
-        assert_eq!(msg.event().unwrap(), EventCode::RequiredWeeklyTest);
+        assert_eq!(msg.event().phenomenon(), Phenomenon::RequiredWeeklyTest);
         assert_eq!(msg.valid_duration_fields(), (3, 51));
         assert_eq!(msg.issue_daytime_fields(), (366, 23, 22));
         assert_eq!(msg.callsign(), "NOCALL00");

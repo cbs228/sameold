@@ -158,9 +158,10 @@ impl SignificanceLevel {
     /// SAME string representation
     ///
     /// Returns the one-character SAME code for this
-    /// `SignificanceLevel`. While this is *usually* the last
-    /// character of the `EventCode`, there are many exceptions
-    /// to this rule.
+    /// `SignificanceLevel`. While this is *frequently* the last
+    /// character of the event code, there are almost as many
+    /// exceptions to this rule as there are codes which
+    /// follow it.
     pub fn as_code_str(&self) -> &'static str {
         self.get_serializations()[0]
     }

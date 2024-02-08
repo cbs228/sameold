@@ -129,9 +129,9 @@ carrier signals before and during message decoding.
 
 ### Interpreting Messages
 
-The [`Message`] type marks the start or end of a SAME message. The
-actual "message" part of a SAME message is the audio itself, which
-should contain a voice message that
+The [`Message`](https://docs.rs/sameold/latest/sameold/enum.Message.html) type
+marks the start or end of a SAME message. The actual "message" part of a SAME
+message is the audio itself, which should contain a voice message that
 
 * describes the event; and
 * provides instructions to the listener.
@@ -148,20 +148,24 @@ If this was the header string received, then you could decode
 `hdr` from the previous example as follows:
 
 ```rust
-use sameold::{EventCode, Originator, SignificanceLevel};
+use sameold::{Phenomenon, Originator, SignificanceLevel};
 
 // what organization originated the message?
 assert_eq!(Originator::NationalWeatherService, hdr.originator());
 
-// event code
-// in actual implementations, handle this error gracefully!
-let evt = hdr.event().expect("unknown event code");
-assert_eq!(EventCode::RequiredWeeklyTest, evt);
+// parse SAME event code `RWT`
+let evt = hdr.event();
 
-// events have a "significance level" which describes how
-// urgent or actual they are
-assert_eq!(SignificanceLevel::Test, evt.to_significance_level());
+//   the Phenomenon describes what is occurring
+assert_eq!(Phenomenon::RequiredWeeklyTest, evt.phenomenon());
+
+//   the SignificanceLevel indicates the overall severity and/or
+//   how intrusive or noisy the alert should be
+assert_eq!(SignificanceLevel::Test, evt.significance());
 assert!(SignificanceLevel::Test < SignificanceLevel::Warning);
+
+//   Display to the user
+assert_eq!("Required Weekly Test", &format!("{}", evt));
 
 // location codes are accessed by iterator
 let first_location = hdr.location_str_iter().next();
@@ -171,10 +175,12 @@ assert_eq!(Some("012345"), first_location);
 SAME messages are always transmitted three times for redundancy.
 When decoding the message header, `sameold` will use all three
 transmissions together to improve decoding. Only one
-[`Message::StartOfMessage`] is output for all three header transmissions.
+[`Message::StartOfMessage`](https://docs.rs/sameold/latest/sameold/enum.Message.html#variant.StartOfMessage)
+is output for all three header transmissions.
 The trailers which denote the end of the message are **not** subject to
-this error-correction process. One [`Message::EndOfMessage`] is
-output for every trailer received. There may be up to three
+this error-correction process. One
+[`Message::EndOfMessage`](https://docs.rs/sameold/latest/sameold/enum.Message.html#variant.EndOfMessage)
+is output for every trailer received. There may be up to three
 `EndOfMessage` output for every complete SAME message.
 
 ## Background

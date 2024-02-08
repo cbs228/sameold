@@ -1,44 +1,65 @@
 //! SAME/EAS Event Codes
 
-use std::convert::TryFrom;
 use std::fmt;
-use std::str::FromStr;
 
 use strum::{EnumMessage, EnumProperty};
-use thiserror::Error;
 
-use crate::SignificanceLevel;
-
-/// SAME message event code
+/// SAME message phenomenon
 ///
-/// Usually constructed via
-/// [MessageHeader::event()](crate::MessageHeader#method.event).
-/// Event codes were obtained from
-/// <https://docs.fcc.gov/public/attachments/FCC-16-80A1.pdf>.
+/// A Phenomenon code indicates what prompted the message. These include
+/// tests, such as the
+/// [required weekly test](Phenomenon::RequiredWeeklyTest),
+/// and live messages like [floods](Phenomenon::Flood). Some events
+/// have multiple significance levels: floods can be reported as both
+/// a "Flood Watch" and a "Flood Warning." The `Phenomenon` only encodes
+/// `Phenomenon::Flood`—the [significance](crate::SignificanceLevel)
+/// is left to other types.
 ///
-/// Converting to string via `.as_ref()` will yield the SAME
-/// event code string. You can also obtain a human-readable message
-///
-/// ```
-/// use sameold::EventCode;
-///
-/// assert_eq!("RWT", (EventCode::RequiredWeeklyTest).as_ref());
-/// assert_eq!("Required Weekly Test", (EventCode::RequiredWeeklyTest).as_display_str());
-/// assert_eq!(
-///     "Required Weekly Test",
-///     format!("{}", EventCode::RequiredWeeklyTest)
-/// );
-/// ```
-///
-/// All events are mapped to a [significance level](SignificanceLevel).
-/// This may be useful when deciding how to handle the event.
+/// Phenomenon may be matched individually if the user wishes to take
+/// special action…
 ///
 /// ```
-/// # use sameold::{EventCode, SignificanceLevel};
-///
-/// let lvl = (EventCode::RequiredWeeklyTest).to_significance_level();
-/// assert_eq!(lvl, SignificanceLevel::Test);
+/// # use sameold::Phenomenon;
+/// # let phenomenon = Phenomenon::Flood;
+/// match phenomenon {
+///     Phenomenon::Flood => println!("this message describes a flood"),
+///     _ => { /* pass */ }
+/// }
 /// ```
+///
+/// … but the programmer must **exercise caution** here. Flooding may also
+///  result from a [`Phenomenon::FlashFlood`] or a larger event like a
+/// [`Phenomenon::Hurricane`]. An evacuation might be declared with
+/// [`Phenomenon::Evacuation`], but many other messages might prompt an
+/// evacuation as part of the response. So:
+///
+/// **⚠️ When in doubt, play the message and let the user decide! ⚠️**
+///
+/// sameold *does* separate Phenomenon into broad categories. These include:
+///
+/// ```
+/// # use sameold::Phenomenon;
+/// assert!(Phenomenon::NationalPeriodicTest.is_national());
+/// assert!(Phenomenon::NationalPeriodicTest.is_test());
+/// assert!(Phenomenon::SevereThunderstorm.is_weather());
+/// assert!(Phenomenon::Fire.is_non_weather());
+/// ```
+///
+/// All Phenomenon `Display` a human-readable description of the event,
+/// without its significance level.
+///
+/// ```
+/// # use sameold::Phenomenon;
+/// use std::fmt;
+///
+/// assert_eq!(format!("{}", Phenomenon::HazardousMaterials), "Hazardous Materials");
+/// assert_eq!(Phenomenon::HazardousMaterials.as_brief_str(), "Hazardous Materials");
+/// ```
+///
+/// but you probably want to display the full
+/// [`EventCode`](crate::EventCode) instead.
+///
+/// NOTE: the strum traits on this type are **not** considered API.
 #[derive(
     Clone,
     Copy,
@@ -47,455 +68,463 @@ use crate::SignificanceLevel;
     Eq,
     Hash,
     strum_macros::EnumMessage,
-    strum_macros::EnumString,
     strum_macros::EnumProperty,
-    strum_macros::IntoStaticStr,
     strum_macros::EnumIter,
 )]
 #[non_exhaustive]
-#[repr(u8)]
-pub enum EventCode {
-    /// Emergency Action Notification (begins national activation)
+pub enum Phenomenon {
+    /// National Emergency Message
+    ///
+    /// This was previously known as Emergency Action Notification
     #[strum(
-        serialize = "EAN",
-        detailed_message = "Emergency Action Notification",
-        props(level = "W")
+        message = "National Emergency",
+        detailed_message = "National Emergency Message",
+        props(national = "")
     )]
-    EmergencyActionNotification,
+    NationalEmergency,
 
-    /// National Information Center (part of national activation)
-    #[strum(
-        serialize = "NIC",
-        detailed_message = "National Information Center",
-        props(level = "S")
-    )]
+    /// National Information Center (United States, part of national activation)
+    #[strum(message = "National Information Center", props(national = ""))]
     NationalInformationCenter,
 
-    /// National Periodic Test
-    #[strum(serialize = "NPT", detailed_message = "National Periodic Test")]
+    /// National Audible Test (Canada)
+    #[strum(message = "National Audible Test", props(national = "", test = ""))]
+    NationalAudibleTest,
+
+    /// National Periodic Test (United States)
+    #[strum(message = "National Periodic Test", props(national = "", test = ""))]
     NationalPeriodicTest,
 
+    /// National Silent Test (Canada)
+    #[strum(message = "National Silent Test", props(national = "", test = ""))]
+    NationalSilentTest,
+
     /// Required Monthly Test
-    #[strum(serialize = "RMT", detailed_message = "Required Monthly Test")]
+    #[strum(message = "Required Monthly Test", props(test = ""))]
     RequiredMonthlyTest,
 
     /// Required Weekly Test
-    #[strum(serialize = "RWT", detailed_message = "Required Weekly Test")]
+    #[strum(message = "Required Weekly Test", props(test = ""))]
     RequiredWeeklyTest,
 
-    /// Administrative Message (state/local)
-    #[strum(serialize = "ADM", detailed_message = "Administrative Message")]
+    /// Administrative Message
+    ///
+    /// Used as follow-up for non-weather messages, including potentially
+    /// to issue an all-clear.
+    #[strum(message = "Administrative Message")]
     AdministrativeMessage,
 
-    /// Avalanche Watch
-    #[strum(serialize = "AVA", detailed_message = "Avalanche Watch")]
-    AvalancheWatch,
+    /// Avalanche
+    #[strum(message = "Avalanche", detailed_message = "Avalanche %")]
+    Avalanche,
 
-    /// Avalanche Warning
-    #[strum(serialize = "AVW", detailed_message = "Avalanche Warning")]
-    AvalancheWarning,
-
-    /// Blizzard Warning
-    #[strum(serialize = "BZW", detailed_message = "Blizzard Warning")]
-    BlizzardWarning,
+    /// Blizzard
+    #[strum(
+        message = "Blizzard",
+        detailed_message = "Blizzard %",
+        props(weather = "")
+    )]
+    Blizzard,
 
     /// Blue Alert (state/local)
-    #[strum(serialize = "BLU", detailed_message = "Blue Alert", props(level = "W"))]
+    #[strum(message = "Blue Alert")]
     BlueAlert,
 
     /// Child Abduction Emergency (state/local)
-    #[strum(serialize = "CAE", detailed_message = "Child Abduction Emergency")]
-    ChildAbductionEmergency,
+    #[strum(
+        message = "Child Abduction",
+        detailed_message = "Child Abduction Emergency"
+    )]
+    ChildAbduction,
 
     /// Civil Danger Warning (state/local)
-    #[strum(serialize = "CDW", detailed_message = "Civil Danger Warning")]
-    CivilDangerWarning,
+    #[strum(message = "Civil Danger", detailed_message = "Civil Danger Warning")]
+    CivilDanger,
 
     /// Civil Emergency Message (state/local)
     #[strum(
-        serialize = "CEM",
-        detailed_message = "Civil Emergency Message",
-        props(level = "W")
+        message = "Civil Emergency",
+        detailed_message = "Civil Emergency Message"
     )]
-    CivilEmergencyMessage,
+    CivilEmergency,
 
-    /// Coastal Flood Warning
-    #[strum(serialize = "CFW", detailed_message = "Coastal Flood Warning")]
-    CoastalFloodWarning,
+    /// Coastal Flood
+    #[strum(
+        message = "Coastal Flood",
+        detailed_message = "Coastal Flood %",
+        props(weather = "")
+    )]
+    CoastalFlood,
 
-    /// Coastal Flood Warning
-    #[strum(serialize = "CFA", detailed_message = "Coastal Flood Watch")]
-    CoastalFloodWatch,
-
-    /// Dust Storm Warning
-    #[strum(serialize = "DSW", detailed_message = "Dust Storm Warning")]
-    DustStormWarning,
+    /// Dust Storm
+    #[strum(
+        message = "Dust Storm",
+        detailed_message = "Dust Storm %",
+        props(weather = "")
+    )]
+    DustStorm,
 
     /// Earthquake Warning
-    #[strum(serialize = "EQW", detailed_message = "Earthquake Warning")]
-    EarthquakeWarning,
+    ///
+    /// **NOTE:** It is unclear if SAME is fast enough to provide timely
+    /// notifications of earthquakes.
+    #[strum(message = "Earthquake", detailed_message = "Earthquake Warning")]
+    Earthquake,
 
     /// Evacuation Immediate
-    #[strum(
-        serialize = "EVI",
-        detailed_message = "Evacuation Immediate",
-        props(level = "W")
-    )]
-    EvacuationImmediate,
+    #[strum(message = "Evacuation", detailed_message = "Evacuation Immediate")]
+    Evacuation,
 
-    /// Extreme Wind Warning
-    #[strum(serialize = "EWW", detailed_message = "Extreme Wind Warning")]
-    ExtremeWindWarning,
+    /// Extreme Wind
+    #[strum(
+        message = "Extreme Wind",
+        detailed_message = "Extreme Wind %",
+        props(weather = "")
+    )]
+    ExtremeWind,
 
     /// Fire Warning
-    #[strum(serialize = "FRW", detailed_message = "Fire Warning")]
-    FireWarning,
+    #[strum(message = "Fire", detailed_message = "Fire %")]
+    Fire,
 
-    /// Flash Flood Warning
-    #[strum(serialize = "FFW", detailed_message = "Flash Flood Warning")]
-    FlashFloodWarning,
+    /// Flash Flood
+    #[strum(
+        message = "Flash Flood",
+        detailed_message = "Flash Flood %",
+        props(weather = "")
+    )]
+    FlashFlood,
 
-    /// Flash Flood Watch
-    #[strum(serialize = "FFA", detailed_message = "Flash Flood Watch")]
-    FlashFloodWatch,
+    /// Flash Freeze (Canada)
+    #[strum(
+        message = "Flash Freeze",
+        detailed_message = "Flash Freeze %",
+        props(weather = "")
+    )]
+    FlashFreeze,
 
-    /// Flash Flood Statement
-    #[strum(serialize = "FFS", detailed_message = "Flash Flood Statement")]
-    FlashFloodStatement,
+    /// Flood
+    #[strum(message = "Flood", detailed_message = "Flood %", props(weather = ""))]
+    Flood,
 
-    /// Flood Warning
-    #[strum(serialize = "FLW", detailed_message = "Flood Warning")]
-    FloodWarning,
+    /// Freeze (Canada)
+    #[strum(message = "Freeze", detailed_message = "Freeze %", props(weather = ""))]
+    Freeze,
 
-    /// Flood Watch
-    #[strum(serialize = "FLA", detailed_message = "Flood Watch")]
-    FloodWatch,
+    /// Hazardous Materials (Warning)
+    #[strum(
+        message = "Hazardous Materials",
+        detailed_message = "Hazardous Materials Warning"
+    )]
+    HazardousMaterials,
 
-    /// Flood Statement
-    #[strum(serialize = "FLS", detailed_message = "Flood Statement")]
-    FloodStatement,
+    /// High Wind
+    #[strum(
+        message = "High Wind",
+        detailed_message = "High Wind %",
+        props(weather = "")
+    )]
+    HighWind,
 
-    /// Hazardous Materials Warning
-    #[strum(serialize = "HMW", detailed_message = "Hazardous Materials Warning")]
-    HazardousMaterialsWarning,
+    /// Hurricane
+    #[strum(
+        message = "Hurricane",
+        detailed_message = "Hurricane %",
+        props(weather = "")
+    )]
+    Hurricane,
 
-    /// High Wind Warning
-    #[strum(serialize = "HWW", detailed_message = "High Wind Warning")]
-    HighWindWarning,
-
-    /// High Wind Watch
-    #[strum(serialize = "HWA", detailed_message = "High Wind Watch")]
-    HighWindWatch,
-
-    /// Hurricane Warning
-    #[strum(serialize = "HUW", detailed_message = "Hurricane Warning")]
-    HurricaneWarning,
-
-    /// Hurricane Watch
-    #[strum(serialize = "HUA", detailed_message = "Hurricane Watch")]
-    HurricaneWatch,
-
-    /// Hurricane Statement
-    #[strum(serialize = "HLS", detailed_message = "Hurricane Statement")]
-    HurricaneStatement,
+    /// Hurricane Local Statement
+    #[strum(message = "Hurricane Local Statement", props(weather = ""))]
+    HurricaneLocalStatement,
 
     /// Law Enforcement Warning
-    #[strum(serialize = "LEW", detailed_message = "Law Enforcement Warning")]
+    #[strum(message = "Law Enforcement Warning")]
     LawEnforcementWarning,
 
     /// Local Area Emergency
-    #[strum(serialize = "LAE", detailed_message = "Local Area Emergency")]
+    #[strum(message = "Local Area Emergency")]
     LocalAreaEmergency,
 
     /// Network Message Notification
-    #[strum(
-        serialize = "NMN",
-        detailed_message = "Network Message Notification",
-        props(level = "M")
-    )]
+    #[strum(message = "Network Message Notification")]
     NetworkMessageNotification,
 
     /// 911 Telephone Outage Emergency
-    #[strum(serialize = "TOE", detailed_message = "911 Telephone Outage Emergency")]
-    TelephoneOutageEmergency,
+    #[strum(
+        message = "911 Telephone Outage",
+        detailed_message = "911 Telephone Outage Emergency"
+    )]
+    TelephoneOutage,
 
-    /// Nuclear Power Plant Warning
-    #[strum(serialize = "NUW", detailed_message = "Nuclear Power Plant Warning")]
-    NuclearPowerPlantWarning,
+    /// Nuclear Power Plant (Warning)
+    #[strum(
+        message = "Nuclear Power Plant",
+        detailed_message = "Nuclear Power Plant Warning"
+    )]
+    NuclearPowerPlant,
 
     /// Practice/Demo Warning
-    #[strum(
-        serialize = "DMO",
-        detailed_message = "Practice/Demo Warning",
-        props(level = "W")
-    )]
+    #[strum(message = "Practice/Demo Warning")]
     PracticeDemoWarning,
 
-    /// Radiological Hazard Warning
-    #[strum(serialize = "RHW", detailed_message = "Radiological Hazard Warning")]
-    RadiologicalHazardWarning,
-
-    /// Severe Thunderstorm Warning
+    /// Radiological Hazard
     #[strum(
-        serialize = "SVR",
-        detailed_message = "Severe Thunderstorm Warning",
-        props(level = "W")
+        message = "Radiological Hazard",
+        detailed_message = "Radiological Hazard Warning"
     )]
-    SevereThunderstormWarning,
+    RadiologicalHazard,
 
-    /// Severe Thunderstorm Watch
-    #[strum(serialize = "SVA", detailed_message = "Severe Thunderstorm Watch")]
-    SevereThunderstormWatch,
+    /// Severe Thunderstorm
+    #[strum(
+        message = "Severe Thunderstorm",
+        detailed_message = "Severe Thunderstorm %",
+        props(weather = "")
+    )]
+    SevereThunderstorm,
 
     /// Severe Weather Statement
-    #[strum(serialize = "SVS", detailed_message = "Severe Weather Statement")]
-    SevereWeatherStatement,
+    #[strum(
+        message = "Severe Weather",
+        detailed_message = "Severe Weather %",
+        props(weather = "")
+    )]
+    SevereWeather,
 
-    /// Shelter In Place Warning
-    #[strum(serialize = "SPW", detailed_message = "Shelter In Place Warning")]
-    ShelterInPlaceWarning,
+    /// Shelter In Place
+    #[strum(
+        message = "Shelter In Place",
+        detailed_message = "Shelter In Place Warning"
+    )]
+    ShelterInPlace,
 
-    /// Special Marine Warning
-    #[strum(serialize = "SMW", detailed_message = "Special Marine Warning")]
-    SpecialMarineWarning,
+    /// Snow Squall
+    #[strum(
+        message = "Snow Squall",
+        detailed_message = "Snow Squall %",
+        props(weather = "")
+    )]
+    SnowSquall,
+
+    /// Special Marine
+    #[strum(
+        message = "Special Marine",
+        detailed_message = "Special Marine %",
+        props(weather = "")
+    )]
+    SpecialMarine,
 
     /// Special Weather Statement
-    #[strum(serialize = "SPS", detailed_message = "Special Weather Statement")]
+    #[strum(message = "Special Weather Statement", props(weather = ""))]
     SpecialWeatherStatement,
 
-    /// Storm Surge Watch
-    #[strum(serialize = "SSA", detailed_message = "Storm Surge Watch")]
-    StormSurgeWatch,
-
-    /// Storm Surge Warning
-    #[strum(serialize = "SSW", detailed_message = "Storm Surge Warning")]
-    StormSurgeWarning,
+    /// Storm Surge
+    #[strum(
+        message = "Storm Surge",
+        detailed_message = "Storm Surge %",
+        props(weather = "")
+    )]
+    StormSurge,
 
     /// Tornado Warning
     #[strum(
-        serialize = "TOR",
-        detailed_message = "Tornado Warning",
-        props(level = "W")
+        message = "Tornado",
+        detailed_message = "Tornado %",
+        props(weather = "")
     )]
-    TornadoWarning,
+    Tornado,
 
-    /// Tornado Watch
-    #[strum(serialize = "TOA", detailed_message = "Tornado Watch")]
-    TornadoWatch,
+    /// Tropical Storm
+    #[strum(
+        message = "Tropical Storm",
+        detailed_message = "Tropical Storm %",
+        props(weather = "")
+    )]
+    TropicalStorm,
 
-    /// Tropical Storm Warning
-    #[strum(serialize = "TRW", detailed_message = "Tropical Storm Warning")]
-    TropicalStormWarning,
+    /// Tsunami
+    #[strum(
+        message = "Tsunami",
+        detailed_message = "Tsunami %",
+        props(weather = "")
+    )]
+    Tsunami,
 
-    /// Tropical Storm Watch
-    #[strum(serialize = "TRA", detailed_message = "Tropical Storm Watch")]
-    TropicalStormWatch,
+    /// Volcano
+    #[strum(message = "Volcano", detailed_message = "Volcano Warning")]
+    Volcano,
 
-    /// Tsunami Warning
-    #[strum(serialize = "TSW", detailed_message = "Tsunami Warning")]
-    TsunamiWarning,
+    /// Winter Storm
+    #[strum(
+        message = "Winter Storm",
+        detailed_message = "Winter Storm %",
+        props(weather = "")
+    )]
+    WinterStorm,
 
-    /// Tsunami Watch
-    #[strum(serialize = "TSA", detailed_message = "Tsunami Watch")]
-    TsunamiWatch,
-
-    /// Volcano Warning
-    #[strum(serialize = "VOW", detailed_message = "Volcano Warning")]
-    VolcanoWarning,
-
-    /// Winter Storm Warning
-    #[strum(serialize = "WSW", detailed_message = "Winter Storm Warning")]
-    WinterStormWarning,
-
-    /// Winter Storm Warning
-    #[strum(serialize = "WSA", detailed_message = "Winter Storm Watch")]
-    WinterStormWatch,
-}
-
-impl EventCode {
-    /// Obtain event's significance level
+    /// Unrecognized phenomenon
     ///
-    /// The significance level ranges from "`Test`"
-    /// (i.e., "this is only a test") to "`Warning`." Each
-    /// event code has a significance level associated with
-    /// it. The [`SignificanceLevel`](SignificanceLevel)
-    /// is useful for determining whether an event merits a
-    /// "noisy" and/or "immediate" alert for the message.
-    pub fn to_significance_level(&self) -> SignificanceLevel {
-        if let Some(level) = self.get_str("level") {
-            SignificanceLevel::from(level)
-        } else {
-            SignificanceLevel::from(self.get_serializations()[0].get(2..3).unwrap_or_default())
-        }
-    }
-
-    /// Human-readable string representation
-    ///
-    /// Converts to a human-readable string, like "`Required Monthly Test`."
-    pub fn as_display_str(&self) -> &'static str {
-        self.get_detailed_message()
-            .expect("missing human-readable definition")
-    }
-
-    /// SAME string representation
-    ///
-    /// Returns the three-character SAME code for this
-    /// `EventCode`.
-    pub fn as_str(&self) -> &'static str {
-        self.get_serializations()[0]
-    }
-}
-
-impl TryFrom<&str> for EventCode {
-    type Error = UnrecognizedEventCode;
-
-    /// Convert from three-character SAME event code
-    ///
-    /// Converts an event code like "`SVR`" into its enumerated
-    /// type (`EventCode::SevereThunderstormWarning`).
-    ///
-    /// If the code is unrecognized, an error is returned.
-    /// An error here does **NOT** mean that the message is
-    /// invalid or should be discarded. Instead, if the
-    /// error is
-    /// [`WithSignificance`](UnrecognizedEventCode#variant.WithSignificance),
-    /// then you should treat it as a valid (but unknown)
-    /// message at the given significance level. This will help
-    /// your application react correctly if new codes are
-    /// added in the future.
-    fn try_from(inp: &str) -> Result<Self, Self::Error> {
-        Self::from_str(inp).map_err(|_| UnrecognizedEventCode::from(inp))
-    }
-}
-
-impl From<&EventCode> for SignificanceLevel {
-    /// Convert to significance level
-    fn from(evt: &EventCode) -> SignificanceLevel {
-        evt.to_significance_level()
-    }
-}
-
-impl AsRef<str> for EventCode {
-    fn as_ref(&self) -> &'static str {
-        self.as_str()
-    }
-}
-
-impl fmt::Display for EventCode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.as_display_str().fmt(f)
-    }
-}
-
-/// An unrecognized SAME event code
-///
-/// Even if the complete event code is unknown, the parser may
-/// still be able to extract some meaning from it. Most new
-/// messages end in the
-/// [`SignificanceLevel`](SignificanceLevel). A new
-/// "Derecho Warning" message, with fictitious code "`DEW`,"
-/// still ends in `W` for Warning. Your client application
-/// should react to it accordingly as a life-threatening Warning,
-/// even if your parser doesn't know what it is.
-///
-/// If the code is unknown and can't be coerced to any of the
-/// `SignificanceLevel`, then
-/// `UnrecognizedEventCode::Unrecognized` is returned.
-#[derive(Error, Debug, Clone, PartialEq, Eq)]
-
-pub enum UnrecognizedEventCode {
-    /// A completely unrecognizable event code
-    #[error("Unrecognized")]
+    /// A catch-all for unrecognized event codes which either did not
+    /// decode properly or are not known to sameold. If you encounter
+    /// an Unrecognized event code in a production message, please
+    /// [report it as a bug](https://github.com/cbs228/sameold/issues)
+    /// right away.
+    #[strum(message = "Unrecognized", detailed_message = "Unrecognized %")]
     Unrecognized,
-
-    /// An unknown event code which *does* match a significance level
-    #[error("Unrecognized {0}")]
-    WithSignificance(SignificanceLevel),
 }
 
-impl From<&str> for UnrecognizedEventCode {
-    /// Convert from a SAME event code
+impl Phenomenon {
+    /// Describes the event without its accompanying severity information.
+    /// For example,
     ///
-    /// Accepts either a three-character SAME event code or
-    /// a single-character significance level. Decodes it
-    /// as a `SignificanceLevel` if possible.
-    fn from(inp: &str) -> Self {
-        match SignificanceLevel::try_from(inp) {
-            Ok(sl) => Self::WithSignificance(sl),
-            Err(_) => Self::Unrecognized,
-        }
+    /// ```
+    /// # use sameold::Phenomenon;
+    /// assert_eq!(Phenomenon::RadiologicalHazard.as_brief_str(), "Radiological Hazard");
+    /// ```
+    ///
+    /// as opposed to the full human-readable description of the event code,
+    /// "Radiological Hazard *Warning*." If you want the full description,
+    /// use [`EventCode`](crate::EventCode) instead.
+    pub fn as_brief_str(&self) -> &'static str {
+        self.get_message().expect("missing phenomenon message")
+    }
+
+    /// True if the phenomenon is associated with a national activation
+    ///
+    /// Returns true if the underlying event code is *typically* used
+    /// for national activations. This includes both live
+    /// National Emergency Messages and the National Periodic Test.
+    ///
+    /// Clients should consult the message's location codes to
+    /// determine if the message actually has national scope.
+    pub fn is_national(&self) -> bool {
+        self.get_str("national").is_some()
+    }
+
+    /// True if the phenomenon is associated with tests
+    ///
+    /// Returns true if the underlying event code is used only for
+    /// tests. Test messages do not represent actual, real-world conditions.
+    /// Test messages should also have a
+    /// [`SignificanceLevel::Test`](crate::SignificanceLevel::Test).
+    pub fn is_test(&self) -> bool {
+        self.get_str("test").is_some()
+    }
+
+    /// True if the represented phenomenon is weather
+    ///
+    /// In the United States, weather phenomenon codes like
+    /// "Severe Thunderstorm Warning" (`SVR`) are typically
+    /// only issued by the National Weather Service. The list of
+    /// weather event codes is taken from:
+    ///
+    /// * "National Weather Service Instruction 10-1708," 11 Dec 2017,
+    /// <https://www.nws.noaa.gov/directives/sym/pd01017008curr.pdf>
+    ///
+    /// Not all **natural phenomenon** are considered **weather.**
+    /// Volcanoes, avalanches, and wildfires are examples of non-weather
+    /// phenomenon that are naturally occurring. The National Weather
+    /// Service does not itself issue these types of alerts; they are
+    /// generally left to state and local authorities.
+    pub fn is_weather(&self) -> bool {
+        self.get_str("weather").is_some()
+    }
+
+    /// True if the represented phenomenon is not weather
+    ///
+    /// The opposite of [`Phenomenon::is_weather()`]. The list of
+    /// non-weather event codes available for national, state, and/or
+    /// local use is taken from:
+    ///
+    /// * "National Weather Service Instruction 10-1708," 11 Dec 2017,
+    /// <https://www.nws.noaa.gov/directives/sym/pd01017008curr.pdf>
+    pub fn is_non_weather(&self) -> bool {
+        !self.is_weather()
+    }
+
+    /// True if the phenomenon is not recognized
+    ///
+    /// ```
+    /// # use sameold::Phenomenon;
+    /// assert!(Phenomenon::Unrecognized.is_unrecognized());
+    /// ```
+    pub fn is_unrecognized(&self) -> bool {
+        self == &Self::Unrecognized
+    }
+
+    /// True if the phenomenon is recognized
+    ///
+    /// ```
+    /// # use sameold::Phenomenon;
+    /// assert!(Phenomenon::TropicalStorm.is_recognized());
+    /// ```
+    ///
+    /// The opposite of [`is_unrecognized()`](Phenomenon::is_unrecognized).
+    pub fn is_recognized(&self) -> bool {
+        !self.is_unrecognized()
+    }
+
+    /// Pattern string for full representation
+    ///
+    /// Returns a string like "`Tornado %`" that is the full string
+    /// representation of a SAME event code, with significance information.
+    /// `%` signs should be replaced with a textual representation of
+    /// the event code's significance level.
+    pub(crate) fn as_full_pattern_str(&self) -> &'static str {
+        self.get_detailed_message()
+            .unwrap_or_else(|| self.get_message().expect("missing phenomenon message"))
+    }
+}
+
+impl Default for Phenomenon {
+    fn default() -> Self {
+        Self::Unrecognized
+    }
+}
+
+impl std::fmt::Display for Phenomenon {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.as_brief_str().fmt(f)
+    }
+}
+
+impl AsRef<str> for Phenomenon {
+    fn as_ref(&self) -> &str {
+        self.as_brief_str()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use strum::IntoEnumIterator;
 
+    use super::*;
+
     #[test]
-    fn test_event_api() {
-        // Conversion to the Unrecognized… series
-        let evt = EventCode::try_from("!!!");
-        assert_eq!(Err(UnrecognizedEventCode::Unrecognized), evt);
-        assert_eq!("Unrecognized", &format!("{}", evt.err().unwrap()));
-
-        let evt2 = EventCode::try_from("??W").unwrap_err();
-        assert_eq!(
-            UnrecognizedEventCode::WithSignificance(SignificanceLevel::Warning),
-            evt2
-        );
-        assert_eq!("Unrecognized Warning", &format!("{}", evt2));
-
-        assert_eq!(
-            UnrecognizedEventCode::WithSignificance(SignificanceLevel::Statement),
-            EventCode::try_from("SSS").unwrap_err()
-        );
-
-        // Conversion from string and significance level
-        let evt = EventCode::try_from("CEM").unwrap();
-        assert_eq!(EventCode::CivilEmergencyMessage, evt);
-        assert_eq!(SignificanceLevel::Warning, evt.to_significance_level());
-        assert_eq!("Civil Emergency Message", evt.as_display_str());
-
-        let evt = EventCode::try_from("NPT").unwrap();
-        assert_eq!(EventCode::NationalPeriodicTest, evt);
-        assert_eq!(SignificanceLevel::Test, evt.to_significance_level());
-        assert_eq!("National Periodic Test", evt.as_display_str());
-
-        let evt = EventCode::try_from("TOR").unwrap();
-        assert_eq!(EventCode::TornadoWarning, evt);
-        assert_eq!(SignificanceLevel::Warning, evt.to_significance_level());
-        assert_eq!("Tornado Warning", evt.as_display_str());
+    fn test_national() {
+        assert!(Phenomenon::NationalEmergency.is_national());
+        assert!(Phenomenon::NationalEmergency.is_non_weather());
+        assert!(Phenomenon::NationalPeriodicTest.is_national());
+        assert!(Phenomenon::NationalPeriodicTest.is_non_weather());
+        assert!(!Phenomenon::Hurricane.is_national());
+        assert!(Phenomenon::Hurricane.is_weather());
     }
 
+    // all phenomenon have messages and are either tests,
+    // weather, or non-weather
     #[test]
-    fn test_event_completeness() {
-        // Did we define our list of Events correctly? This method helps us
-        // check them all
-        const REQUIRE_NUM_LIVE_CODES: u8 = 56;
-        assert_eq!(
-            REQUIRE_NUM_LIVE_CODES,
-            EventCode::WinterStormWatch as u8 + 1
-        );
+    fn test_property_completeness() {
+        for phenom in Phenomenon::iter() {
+            // these must not panic
+            phenom.as_brief_str();
+            phenom.as_full_pattern_str();
 
-        let mut code_set =
-            std::collections::HashSet::with_capacity(REQUIRE_NUM_LIVE_CODES as usize);
-        let mut name_set =
-            std::collections::HashSet::with_capacity(REQUIRE_NUM_LIVE_CODES as usize);
-
-        for evt in EventCode::iter() {
-            // make sure code assignment and name assignments are unique
-            let eee: &str = evt.clone().into();
-            assert!(code_set.insert(eee.to_owned()));
-            assert!(name_set.insert(evt.as_ref().to_owned()));
-
-            // convert from code
-            let cmp = EventCode::from_str(eee).expect("can't back-convert event EEE code!");
-            assert_eq!(cmp, evt);
-
-            // convert to significance level does not panic
-            let _ = evt.to_significance_level();
+            if phenom.is_test() || phenom.is_national() {
+                assert!(phenom.is_non_weather());
+            }
+            if phenom.is_weather() {
+                assert!(!phenom.is_test());
+            }
         }
     }
 }
