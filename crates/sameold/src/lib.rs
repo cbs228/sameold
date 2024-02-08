@@ -229,7 +229,7 @@ mod receiver;
 
 pub use message::{
     EventCode, EventCodeIter, InvalidDateErr, Message, MessageDecodeErr, MessageHeader,
-    MessageResult, Originator, SignificanceLevel, UnknownSignificanceLevel, UnrecognizedEventCode,
+    MessageResult, Originator, SignificanceLevel, UnrecognizedEventCode,
 };
 pub use receiver::{
     EqualizerBuilder, LinkState, SameEvent, SameEventType, SameReceiver, SameReceiverBuilder,

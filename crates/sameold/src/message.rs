@@ -15,7 +15,7 @@ use thiserror::Error;
 
 pub use originator::Originator;
 pub use phenomenon::{EventCode, EventCodeIter, UnrecognizedEventCode};
-pub use significance::{SignificanceLevel, UnknownSignificanceLevel};
+pub use significance::SignificanceLevel;
 
 /// The result of parsing a message
 pub type MessageResult = Result<Message, MessageDecodeErr>;

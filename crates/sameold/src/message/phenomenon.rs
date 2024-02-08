@@ -322,7 +322,11 @@ impl EventCode {
     /// is useful for determining whether an event merits a
     /// "noisy" and/or "immediate" alert for the message.
     pub fn to_significance_level(&self) -> SignificanceLevel {
-        SignificanceLevel::try_from(self).expect("missing significance level definition")
+        if let Some(level) = self.get_str("level") {
+            SignificanceLevel::from(level)
+        } else {
+            SignificanceLevel::from(self.get_serializations()[0].get(2..3).unwrap_or_default())
+        }
     }
 
     /// Human-readable string representation
@@ -367,14 +371,7 @@ impl TryFrom<&str> for EventCode {
 impl From<&EventCode> for SignificanceLevel {
     /// Convert to significance level
     fn from(evt: &EventCode) -> SignificanceLevel {
-        // if we define a level property, use that
-        // if the last character is valid, use that
-        // otherwise, it's a warning.
-        let lvl = evt
-            .get_str("level")
-            .unwrap_or_else(|| evt.get_serializations()[0]);
-
-        SignificanceLevel::try_from(lvl).expect("missing significance level definition")
+        evt.to_significance_level()
     }
 }
 

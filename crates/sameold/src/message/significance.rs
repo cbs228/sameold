@@ -1,34 +1,44 @@
 //! Significance level
 
-use std::convert::TryFrom;
 use std::fmt;
-use std::str::FromStr;
 
 use strum::EnumMessage;
-use thiserror::Error;
 
 /// SAME message significance level
 ///
-/// Usually constructed as part of an [`EventCode`].
-/// See also [MessageHeader::event()](crate::MessageHeader#method.event)
+/// Usually constructed as part of an [`EventCode`](crate::EventCode).
+/// See also [`MessageHeader::event()`](crate::MessageHeader::event)
 ///
-/// Significance levels have a single-character text
-/// representation, like "`T`" for Test. You can attempt to
-/// convert from string:
+/// Three-letter SAME codes sometimes use the last letter to
+/// indicate *significance* or severity.
+///
+/// | Code    | Significance                                      |
+/// |---------|---------------------------------------------------|
+/// | `xxT`   | [test](crate::SignificanceLevel::Test)            |
+/// | `xxM`   | [message](crate::SignificanceLevel::Message)      |
+/// | `xxS`   | [statement](crate::SignificanceLevel::Statement)  |
+/// | `xxE`   | [emergency](crate::SignificanceLevel::Emergency)  |
+/// | `xxA`   | [watch](crate::SignificanceLevel::Watch)          |
+/// | `xxW`   | [warning](crate::SignificanceLevel::Warning)      |
+///
+/// There are many message codes which do not follow this standard—and
+/// some even contradict it. sameold knows the correct significance
+/// code for these special cases, and the
+/// [event](crate::MessageHeader::event) API will return it.
+///
+/// Significance codes can be converted directly from or to string.
 ///
 /// ```
-/// # use std::convert::TryFrom;
-/// use sameold::{SignificanceLevel, UnknownSignificanceLevel};
+/// use sameold::SignificanceLevel;
 ///
-/// assert_eq!(SignificanceLevel::Watch, SignificanceLevel::try_from("zzA").unwrap());
-/// assert_eq!(UnknownSignificanceLevel {}, SignificanceLevel::try_from("").unwrap_err());
-/// assert_eq!(SignificanceLevel::Test, SignificanceLevel::try_from("T").unwrap());
+/// assert_eq!(SignificanceLevel::Watch, SignificanceLevel::from("A"));
+/// assert_eq!(SignificanceLevel::Test, SignificanceLevel::from("T"));
+///
+/// assert_eq!("Test", SignificanceLevel::Test.as_display_str());
+/// assert_eq!("Test", format!("{}", SignificanceLevel::Test));
+/// assert_eq!("T", SignificanceLevel::Test.as_code_str());
+/// assert_eq!("T", format!("{:#}", SignificanceLevel::Test));
 /// ```
-///
-/// If a multi-character string is given as input, the last character
-/// will be used.  The last byte must be valid UTF-8. In all situations
-/// where a valid `SignificanceLevel` can't be constructed, an
-/// error is returned.
 ///
 /// Significance levels are `Ord`. Lower significance levels
 /// represent less urgent messages, such as tests and statements.
@@ -37,9 +47,18 @@ use thiserror::Error;
 ///
 /// ```
 /// # use sameold::SignificanceLevel;
-///
 /// assert!(SignificanceLevel::Test < SignificanceLevel::Warning);
 /// assert!(SignificanceLevel::Watch < SignificanceLevel::Warning);
+/// ```
+///
+/// Unrecognized significance levels are quietly represented as
+/// [`SignificanceLevel::Unknown`]. Clients are encouraged to treat
+/// messages with this significance level as a Warning.
+///
+/// ```
+/// # use sameold::SignificanceLevel;
+/// assert_eq!(SignificanceLevel::Unknown, SignificanceLevel::from(""));
+/// assert!(SignificanceLevel::Unknown >= SignificanceLevel::Warning);
 /// ```
 #[derive(
     Clone,
@@ -99,9 +118,36 @@ pub enum SignificanceLevel {
     /// > is high, and the onset time is relatively short (NWSI 10-1712).
     #[strum(serialize = "W", detailed_message = "Warning")]
     Warning,
+
+    /// Unknown significance level
+    ///
+    /// No significance level could be determined, either by knowledge of
+    /// the complete event code or by examining the last character.
+    /// Clients are strongly advised to treat unknown-significance messages
+    /// as [`SignificanceLevel::Warning`].
+    #[strum(serialize = "", detailed_message = "Warning")]
+    Unknown,
 }
 
 impl SignificanceLevel {
+    /// Parse from string
+    ///
+    /// Parses a SAME significance level from a single-character
+    /// `code` like "`T`" for [`SignificanceLevel::Test`]. If the
+    /// input does not match a significance level, returns
+    /// [`SignificanceLevel::Unknown`].
+    ///
+    /// The user is cautioned not to blindly convert the last
+    /// character of a SAME code to a `SignificanceLevel`. There
+    /// are many event codes like "`EVI`" which do not follow the
+    /// `SignificanceLevel` convention.
+    pub fn from<S>(code: S) -> Self
+    where
+        S: AsRef<str>,
+    {
+        str::parse(code.as_ref()).unwrap_or_default()
+    }
+
     /// Human-readable string representation
     ///
     /// Converts to a human-readable string, like "`Warning`."
@@ -115,54 +161,39 @@ impl SignificanceLevel {
     /// `SignificanceLevel`. While this is *usually* the last
     /// character of the `EventCode`, there are many exceptions
     /// to this rule.
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_code_str(&self) -> &'static str {
         self.get_serializations()[0]
+    }
+}
+
+impl std::default::Default for SignificanceLevel {
+    fn default() -> Self {
+        SignificanceLevel::Unknown
+    }
+}
+
+impl From<&str> for SignificanceLevel {
+    fn from(s: &str) -> SignificanceLevel {
+        SignificanceLevel::from(s)
     }
 }
 
 impl AsRef<str> for SignificanceLevel {
     fn as_ref(&self) -> &'static str {
-        self.as_str()
+        self.as_code_str()
     }
 }
 
 impl fmt::Display for SignificanceLevel {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.as_display_str().fmt(f)
-    }
-}
-
-impl TryFrom<&str> for SignificanceLevel {
-    type Error = UnknownSignificanceLevel;
-
-    /// Convert from string representation
+    /// Printable string
     ///
-    /// Matches a standard-form EAS event code, such as `xxT` for
-    /// Test, and converts it to its enumerated type. If the given
-    /// string does not end in a significance level,
-    /// `UnknownSignificanceLevel` is returned.
-    fn try_from(inp: &str) -> Result<Self, Self::Error> {
-        let s = last_ascii_character(inp).ok_or(UnknownSignificanceLevel {})?;
-        SignificanceLevel::from_str(s).map_err(|_| UnknownSignificanceLevel {})
-    }
-}
-
-/// Unknown significance level
-///
-/// The event code is not known, and we were unable to determine
-/// a significance level from it.
-#[derive(Error, Clone, Debug, PartialEq, Eq)]
-#[error("The event significance level could not be determined")]
-pub struct UnknownSignificanceLevel {}
-
-// Get last character of the given ASCII string
-//
-// The last byte of `s` must be valid UTF-8. Returns reference
-// to the last byte.
-fn last_ascii_character<'a>(s: &'a str) -> Option<&'a str> {
-    if s.is_empty() {
-        None
-    } else {
-        s.get((s.len() - 1)..s.len())
+    /// * The normal form is a human-readable string like "`Statement`"
+    /// * The alternate form is a one-character string like "`S`"
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if f.alternate() {
+            self.as_code_str().fmt(f)
+        } else {
+            self.as_display_str().fmt(f)
+        }
     }
 }
