@@ -15,7 +15,6 @@ use strum::EnumMessage;
 /// | Code    | Significance                                      |
 /// |---------|---------------------------------------------------|
 /// | `xxT`   | [test](crate::SignificanceLevel::Test)            |
-/// | `xxM`   | [message](crate::SignificanceLevel::Message)      |
 /// | `xxS`   | [statement](crate::SignificanceLevel::Statement)  |
 /// | `xxE`   | [emergency](crate::SignificanceLevel::Emergency)  |
 /// | `xxA`   | [watch](crate::SignificanceLevel::Watch)          |
@@ -79,12 +78,6 @@ pub enum SignificanceLevel {
     /// A message intended only for testing purposes. "This is only a test."
     #[strum(serialize = "T", detailed_message = "Test")]
     Test,
-
-    /// Message
-    ///
-    /// A non-emergency message
-    #[strum(serialize = "M", detailed_message = "Message")]
-    Message,
 
     /// Statement
     ///

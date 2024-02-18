@@ -283,7 +283,6 @@ The child process receives the following additional environment variables:
   the event code is unknown).
 
   * `T`: Test
-  * `M`: Message
   * `S`: Statement
   * `E`: Emergency
   * `A`: Watch
