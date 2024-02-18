@@ -273,13 +273,15 @@ The child process receives the following additional environment variables:
 
 * `SAMEDEC_EVT`: the three-character SAME event code, like "`RWT`"
 
-* `SAMEDEC_EVENT`: human-readable event name: "`Required Weekly Test`." If the
-  event code is not known, and it its significance level is also unknown, then
-  this string will be "`Unrecognized`."
+* `SAMEDEC_EVENT`: human-readable event description, including its significance
+  level: "`Required Weekly Test`." If the event code is not known, and it its
+  significance level is also unknown, then this string will be
+  "`Unrecognized Warning`."
 
 * `SAMEDEC_SIGNIFICANCE`: one-character significance level. This variable will
   be empty if the significance level could not be determined (i.e., because
   the event code is unknown).
+
   * `T`: Test
   * `M`: Message
   * `S`: Statement

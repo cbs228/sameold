@@ -7,7 +7,7 @@ use std::io;
 use std::process::{Child, Command, Stdio};
 
 use chrono::{DateTime, Utc};
-use sameold::{MessageHeader, UnrecognizedEventCode};
+use sameold::MessageHeader;
 
 /// Spawn a child process to handle the given message
 ///
@@ -54,8 +54,11 @@ where
             header.originator().as_display_str(),
         )
         .env(childenv::SAMEDEC_EVT, header.event_str())
-        .env(childenv::SAMEDEC_EVENT, msg_to_event(&header))
-        .env(childenv::SAMEDEC_SIGNIFICANCE, msg_to_significance(header))
+        .env(childenv::SAMEDEC_EVENT, header.event().to_string())
+        .env(
+            childenv::SAMEDEC_SIGNIFICANCE,
+            header.event().significance().as_code_str(),
+        )
         .env(childenv::SAMEDEC_LOCATIONS, locations.join(" "))
         .env(childenv::SAMEDEC_ISSUETIME, issue_ts)
         .env(childenv::SAMEDEC_PURGETIME, purge_ts)
@@ -143,23 +146,6 @@ mod childenv {
     pub const SAMEDEC_PURGETIME: &str = "SAMEDEC_PURGETIME";
 }
 
-// convert message event code to string
-fn msg_to_event(msg: &MessageHeader) -> String {
-    match msg.event() {
-        Ok(evt) => evt.as_display_str().to_owned(),
-        Err(err) => format!("{}", err),
-    }
-}
-
-// convert message event code to significance
-fn msg_to_significance(msg: &MessageHeader) -> &'static str {
-    match msg.event() {
-        Ok(evt) => evt.to_significance_level().as_str(),
-        Err(UnrecognizedEventCode::WithSignificance(sl)) => sl.as_str(),
-        Err(UnrecognizedEventCode::Unrecognized) => "",
-    }
-}
-
 // convert DateTime to UTC unix timestamp in seconds, as string
 fn time_to_unix_str(tm: DateTime<Utc>) -> String {
     format!("{}", tm.format("%s"))
@@ -168,15 +154,6 @@ fn time_to_unix_str(tm: DateTime<Utc>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use sameold::MessageHeader;
-
-    #[test]
-    fn test_msg_to_significance() {
-        const MSG: &str = "ZCZC-WXR-RWT-012345-567890-888990+0351-3662322-NOCALL-";
-        let msg = MessageHeader::new(MSG).unwrap();
-        assert_eq!("T", msg_to_significance(&msg));
-    }
 
     #[test]
     fn test_time_to_unix_str() {

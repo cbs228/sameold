@@ -260,7 +260,7 @@ mod tests {
     use super::*;
 
     use chrono::{Duration, TimeZone, Utc};
-    use sameold::EventCode;
+    use sameold::Phenomenon;
 
     #[test]
     fn test_make_demo_message() {
@@ -270,7 +270,7 @@ mod tests {
             Message::StartOfMessage(hdr) => hdr,
             _ => unreachable!(),
         };
-        assert_eq!(msg.event().unwrap(), EventCode::PracticeDemoWarning);
+        assert_eq!(msg.event().phenomenon(), Phenomenon::PracticeDemoWarning);
         assert_eq!(msg.issue_datetime(&tm).unwrap(), tm);
         assert_eq!(msg.valid_duration(), Duration::minutes(15));
     }
