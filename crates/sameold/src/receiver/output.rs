@@ -12,21 +12,21 @@ use crate::message::{Message, MessageResult};
 ///    times for redundancy. These retransmissions are combined
 ///    together to form a single [`Message`] estimate.
 ///
-/// The [`what()`](SameEvent::what) method returns the event,
+/// The [`what()`](SameReceiverEvent::what) method returns the event,
 /// which may originate from either layer.
 ///
 /// You can also query for the
-/// [`message()`](SameEvent::message) or an individual
-/// [`burst()`](SameEvent::burst) estimate, if one is
+/// [`message()`](SameReceiverEvent::message) or an individual
+/// [`burst()`](SameReceiverEvent::burst) estimate, if one is
 /// available now. Not all events have either of these things
 /// to report.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct SameEvent {
+pub struct SameReceiverEvent {
     what: SameEventType,
     input_sample_counter: u64,
 }
 
-impl SameEvent {
+impl SameReceiverEvent {
     /// Message or message decoding error, if any
     ///
     /// If the current update includes a message or a reportable
@@ -44,7 +44,7 @@ impl SameEvent {
     /// If the current update includes a successfully-decoded
     /// message, returns it. If no message is available, returns
     /// `None`. Consider using
-    /// [`message()`](SameEvent::message()) instead to
+    /// [`message()`](SameReceiverEvent::message()) instead to
     /// report errors.
     pub fn message_ok(&self) -> Option<&Message> {
         match self.what() {
@@ -74,7 +74,7 @@ impl SameEvent {
     ///
     /// Clients **MUST NOT** report a single burst as a
     /// SAME message. Messages should instead be obtained from
-    /// from the transport layer's [`message()`](SameEvent::message).
+    /// from the transport layer's [`message()`](SameReceiverEvent::message).
     pub fn burst(&self) -> Option<&[u8]> {
         match self.what() {
             SameEventType::Link(LinkState::Burst(res)) => Some(res.as_ref()),
@@ -98,7 +98,7 @@ impl SameEvent {
     ///
     /// If the current update includes a successfully-decoded
     /// message, returns it. If no message is available, returns
-    /// `None`. Consider using [`SameEvent::into_message`] instead.
+    /// `None`. Consider using [`SameReceiverEvent::into_message`] instead.
     pub fn into_message_ok(self) -> Option<Message> {
         match self.what {
             SameEventType::Transport(TransportState::Message(res)) => res.ok(),
@@ -123,7 +123,7 @@ impl SameEvent {
     }
 }
 
-impl SameEvent {
+impl SameReceiverEvent {
     /// Create from event and time
     pub(crate) fn new<E>(what: E, input_sample_counter: u64) -> Self
     where
@@ -136,19 +136,19 @@ impl SameEvent {
     }
 }
 
-impl From<SameEvent> for Option<MessageResult> {
-    fn from(rx: SameEvent) -> Self {
+impl From<SameReceiverEvent> for Option<MessageResult> {
+    fn from(rx: SameReceiverEvent) -> Self {
         rx.into_message()
     }
 }
 
-impl From<SameEvent> for Option<Message> {
-    fn from(rx: SameEvent) -> Self {
+impl From<SameReceiverEvent> for Option<Message> {
+    fn from(rx: SameReceiverEvent) -> Self {
         rx.into_message_ok()
     }
 }
 
-impl std::fmt::Display for SameEvent {
+impl std::fmt::Display for SameReceiverEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -161,7 +161,7 @@ impl std::fmt::Display for SameEvent {
 
 /// Type of event
 ///
-/// See [`SameEvent`]
+/// See [`SameReceiverEvent`]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum SameEventType {
     /// Link layer event

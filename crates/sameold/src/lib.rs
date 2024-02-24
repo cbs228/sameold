@@ -119,7 +119,7 @@
 //! Events from both layers can be captured using the
 //! [`iter_events()`](crate::SameReceiver::iter_events) method instead of
 //! `iter_messages()`. The events iterator can be used to obtain raw framed
-//! [bursts](crate::SameEvent::burst) without delay or error-correction.
+//! [bursts](crate::SameReceiverEvent::burst) without delay or error-correction.
 //! Events can also report the detection of SAME carrier signals before and
 //! during message decoding.
 //!
@@ -238,6 +238,6 @@ pub use message::{
     Phenomenon, SignificanceLevel,
 };
 pub use receiver::{
-    EqualizerBuilder, LinkState, SameEvent, SameEventType, SameReceiver, SameReceiverBuilder,
-    TransportState,
+    EqualizerBuilder, LinkState, SameEventType, SameReceiver, SameReceiverBuilder,
+    SameReceiverEvent, TransportState,
 };

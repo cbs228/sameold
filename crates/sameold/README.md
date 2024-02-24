@@ -123,7 +123,7 @@ Events from both layers can be captured using the
 [`iter_events()`](https://docs.rs/sameold/latest/sameold/struct.SameReceiver.html#method.iter_events)
 method instead of `iter_messages()`. The events iterator can be used to obtain
 raw framed
-[bursts](https://docs.rs/sameold/latest/sameold/struct.SameEvent.html#method.burst)
+[bursts](https://docs.rs/sameold/latest/sameold/struct.SameReceiverEvent.html#method.burst)
 without delay or error-correction. Events can also report the detection of SAME
 carrier signals before and during message decoding.
 
