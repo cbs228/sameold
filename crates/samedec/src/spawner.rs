@@ -40,6 +40,7 @@ where
     };
 
     let locations: Vec<&str> = header.location_str_iter().collect();
+    let evt = header.event();
 
     Command::new(cmd)
         .stdin(Stdio::piped())
@@ -54,10 +55,14 @@ where
             header.originator().as_display_str(),
         )
         .env(childenv::SAMEDEC_EVT, header.event_str())
-        .env(childenv::SAMEDEC_EVENT, header.event().to_string())
+        .env(childenv::SAMEDEC_EVENT, evt.to_string())
         .env(
             childenv::SAMEDEC_SIGNIFICANCE,
-            header.event().significance().as_code_str(),
+            evt.significance().as_code_str(),
+        )
+        .env(
+            childenv::SAMEDEC_SIG_NUM,
+            (evt.significance() as u8).to_string(),
         )
         .env(childenv::SAMEDEC_LOCATIONS, locations.join(" "))
         .env(childenv::SAMEDEC_ISSUETIME, issue_ts)
@@ -117,12 +122,34 @@ mod childenv {
     /// Significance levels are assigned by the `sameold`
     /// developers.
     ///
-    /// * `T`: Test
-    /// * `S`: Statement
-    /// * `E`: Emergency
-    /// * `A`: Watch
-    /// * `W`: Warning
+    /// |       |                 |
+    /// |-------|-----------------|
+    /// | "`T`" | Test            |
+    /// | "`S`" | Statement       |
+    /// | "`E`" | Emergency       |
+    /// | "`A`" | Watch           |
+    /// | "`W`" | Warning         |
+    /// | "``"  | Unknown         |
     pub const SAMEDEC_SIGNIFICANCE: &str = "SAMEDEC_SIGNIFICANCE";
+
+    /// SAME event significance level, numeric
+    ///
+    /// The significance level assigned to the SAME event code,
+    /// expressed as a whole number in increasing order of
+    /// severity.
+    ///
+    /// Significance levels are assigned by the `sameold`
+    /// developers.
+    ///
+    /// |       |                 |
+    /// |-------|-----------------|
+    /// | "`0`" | Test            |
+    /// | "`1`" | Statement       |
+    /// | "`2`" | Emergency       |
+    /// | "`3`" | Watch           |
+    /// | "`4`" | Warning         |
+    /// | "`5`" | Unknown         |
+    pub const SAMEDEC_SIG_NUM: &str = "SAMEDEC_SIG_NUM";
 
     /// FIPS code locations
     ///

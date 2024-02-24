@@ -282,11 +282,26 @@ The child process receives the following additional environment variables:
   be empty if the significance level could not be determined (i.e., because
   the event code is unknown).
 
-  * `T`: Test
-  * `S`: Statement
-  * `E`: Emergency
-  * `A`: Watch
-  * `W`: Warning
+  |       |                 |
+  |-------|-----------------|
+  | "`T`" | Test            |
+  | "`S`" | Statement       |
+  | "`E`" | Emergency       |
+  | "`A`" | Watch           |
+  | "`W`" | Warning         |
+  | ""    | Unknown         |
+
+* `SAMEDEC_SIG_NUM`: significance level, expressed as a whole number
+  in increasing order of severity.
+
+  |       |                 |
+  |-------|-----------------|
+  | "`0`" | Test            |
+  | "`1`" | Statement       |
+  | "`2`" | Emergency       |
+  | "`3`" | Watch           |
+  | "`4`" | Warning         |
+  | "`5`" | Unknown         |
 
 * `SAMEDEC_LOCATIONS`: *space-delimited* list of FIPS location codes, which are
   six characters long. Example: "`012057 012081`"
