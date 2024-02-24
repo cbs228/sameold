@@ -114,7 +114,6 @@ mod childenv {
     /// developers.
     ///
     /// * `T`: Test
-    /// * `M`: Message
     /// * `S`: Statement
     /// * `E`: Emergency
     /// * `A`: Watch
