@@ -2,7 +2,7 @@
 name = "sameold"
 rust-version = "1.65"
 description = "A SAME/EAS digital receiver library"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Colin S <3526918+cbs228@users.noreply.github.com>"]
 license = "MIT OR Apache-2.0"
 edition = "2021"

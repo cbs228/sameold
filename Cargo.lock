@@ -583,7 +583,7 @@ dependencies = [
 
 [[package]]
 name = "samedec"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -597,7 +597,7 @@ dependencies = [
 
 [[package]]
 name = "sameold"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "arraydeque",
  "arrayvec",

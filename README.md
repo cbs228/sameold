@@ -84,7 +84,7 @@ Add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-sameold = "0.2"
+sameold = "0.4"
 ```
 
 Then read our
