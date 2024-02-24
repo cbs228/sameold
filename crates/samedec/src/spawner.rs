@@ -40,6 +40,7 @@ where
     };
 
     let locations: Vec<&str> = header.location_str_iter().collect();
+    let evt = header.event();
 
     Command::new(cmd)
         .stdin(Stdio::piped())
@@ -54,14 +55,22 @@ where
             header.originator().as_display_str(),
         )
         .env(childenv::SAMEDEC_EVT, header.event_str())
-        .env(childenv::SAMEDEC_EVENT, header.event().to_string())
+        .env(childenv::SAMEDEC_EVENT, evt.to_string())
         .env(
             childenv::SAMEDEC_SIGNIFICANCE,
-            header.event().significance().as_code_str(),
+            evt.significance().as_code_str(),
+        )
+        .env(
+            childenv::SAMEDEC_SIG_NUM,
+            (evt.significance() as u8).to_string(),
         )
         .env(childenv::SAMEDEC_LOCATIONS, locations.join(" "))
         .env(childenv::SAMEDEC_ISSUETIME, issue_ts)
         .env(childenv::SAMEDEC_PURGETIME, purge_ts)
+        .env(
+            childenv::SAMEDEC_IS_NATIONAL,
+            bool_to_env(header.is_national()),
+        )
         .spawn()
 }
 
@@ -113,12 +122,34 @@ mod childenv {
     /// Significance levels are assigned by the `sameold`
     /// developers.
     ///
-    /// * `T`: Test
-    /// * `S`: Statement
-    /// * `E`: Emergency
-    /// * `A`: Watch
-    /// * `W`: Warning
+    /// |       |                 |
+    /// |-------|-----------------|
+    /// | "`T`" | Test            |
+    /// | "`S`" | Statement       |
+    /// | "`E`" | Emergency       |
+    /// | "`A`" | Watch           |
+    /// | "`W`" | Warning         |
+    /// | "``"  | Unknown         |
     pub const SAMEDEC_SIGNIFICANCE: &str = "SAMEDEC_SIGNIFICANCE";
+
+    /// SAME event significance level, numeric
+    ///
+    /// The significance level assigned to the SAME event code,
+    /// expressed as a whole number in increasing order of
+    /// severity.
+    ///
+    /// Significance levels are assigned by the `sameold`
+    /// developers.
+    ///
+    /// |       |                 |
+    /// |-------|-----------------|
+    /// | "`0`" | Test            |
+    /// | "`1`" | Statement       |
+    /// | "`2`" | Emergency       |
+    /// | "`3`" | Watch           |
+    /// | "`4`" | Warning         |
+    /// | "`5`" | Unknown         |
+    pub const SAMEDEC_SIG_NUM: &str = "SAMEDEC_SIG_NUM";
 
     /// FIPS code locations
     ///
@@ -143,11 +174,39 @@ mod childenv {
     /// clock. It will be empty if a complete timestamp cannot be
     /// calculated.
     pub const SAMEDEC_PURGETIME: &str = "SAMEDEC_PURGETIME";
+
+    /// True if the message is a national activation
+    ///
+    /// This variable is set to `Y` if:
+    ///
+    /// - the location code in the SAME message indicates
+    ///   national applicability; and
+    ///
+    /// - the event code is reserved for national use
+    ///
+    /// Otherwise, this variable is set to the empty string.
+    ///
+    /// The message may either be a national test or a national emergency.
+    /// Clients are **strongly encouraged** to always play national-level
+    /// messages and to never provide the option to suppress them.
+    pub const SAMEDEC_IS_NATIONAL: &str = "SAMEDEC_IS_NATIONAL";
 }
 
 // convert DateTime to UTC unix timestamp in seconds, as string
 fn time_to_unix_str(tm: DateTime<Utc>) -> String {
     format!("{}", tm.format("%s"))
+}
+
+// convert true → "Y", false → ""
+//
+// this is useful for environment variables since empty values
+// are usually treated as false
+fn bool_to_env(val: bool) -> &'static str {
+    if val {
+        "Y"
+    } else {
+        ""
+    }
 }
 
 #[cfg(test)]

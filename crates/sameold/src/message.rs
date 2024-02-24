@@ -367,8 +367,7 @@ impl MessageHeader {
     /// Per the SAME standard, a message can have up to 31
     /// location codes.
     pub fn location_str_iter<'m>(&'m self) -> std::str::Split<'m, char> {
-        let locations = &self.message[Self::OFFSET_AREA_START..self.offset_time];
-        locations.split('-')
+        self.location_str().split('-')
     }
 
     /// Message validity duration (Duration)
@@ -529,12 +528,36 @@ impl MessageHeader {
         self.voting_byte_count
     }
 
+    /// True if the message is a national activation
+    ///
+    /// Returns true if:
+    ///
+    /// - the location code in the SAME message indicates
+    ///   national applicability; and
+    ///
+    /// - the event code is reserved for national use
+    ///
+    /// The message may either be a test or an actual emergency.
+    /// Consult the [`event()`](MessageHeader::event) for details.
+    ///
+    /// Clients are **strongly encouraged** to always play
+    /// national-level messages and to never provide the option to
+    /// suppress them.
+    pub fn is_national(&self) -> bool {
+        self.location_str() == Self::LOCATION_NATIONAL && self.event().phenomenon().is_national()
+    }
+
     /// Obtain the owned message String
     ///
     /// Destroys this object and releases the message
     /// contained within
     pub fn release(self) -> String {
         self.message
+    }
+
+    /// The location portion of the message string
+    fn location_str(&self) -> &str {
+        &self.message[Self::OFFSET_AREA_START..self.offset_time]
     }
 
     const OFFSET_ORG: usize = 5;
@@ -545,6 +568,7 @@ impl MessageHeader {
     const OFFSET_FROMPLUS_CALLSIGN: usize = 14;
     const OFFSET_FROMEND_CALLSIGN_END: usize = 1;
     const PANIC_MSG: &'static str = "MessageHeader validity check admitted a malformed message";
+    const LOCATION_NATIONAL: &'static str = "000000";
 }
 
 impl fmt::Display for Message {
@@ -830,6 +854,7 @@ mod tests {
         assert_eq!(msg.callsign(), "NOCALL00");
         assert_eq!(msg.parity_error_count(), 6);
         assert_eq!(msg.voting_byte_count(), msg.as_str().len());
+        assert!(!msg.is_national());
 
         let loc: Vec<&str> = msg.location_str_iter().collect();
         assert_eq!(loc.as_slice(), &["012345", "567890", "888990"]);
@@ -869,5 +894,22 @@ mod tests {
 
         let msg = Message::try_from("NN".to_owned()).expect("bad msg");
         assert_eq!(Message::EndOfMessage, msg);
+    }
+
+    #[test]
+    fn test_is_national() {
+        let national = MessageHeader::new("ZCZC-PEP-NPT-000000+0030-2771820-TEST    -").unwrap();
+        assert!(national.is_national());
+
+        let national = MessageHeader::new("ZCZC-PEP-EAN-000000+0030-2771820-TEST    -").unwrap();
+        assert!(national.is_national());
+
+        let not_national =
+            MessageHeader::new("ZCZC-PEP-NPT-000001+0030-2771820-TEST    -").unwrap();
+        assert!(!not_national.is_national());
+
+        let not_national =
+            MessageHeader::new("ZCZC-PEP-NPT-000000-000001+0030-2771820-TEST    -").unwrap();
+        assert!(!not_national.is_national());
     }
 }
