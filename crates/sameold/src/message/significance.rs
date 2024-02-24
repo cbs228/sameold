@@ -69,7 +69,7 @@ use strum::EnumMessage;
     Ord,
     Hash,
     strum_macros::EnumMessage,
-    strum_macros::EnumString,
+    strum_macros::EnumIter,
 )]
 #[repr(u8)]
 pub enum SignificanceLevel {
@@ -138,7 +138,14 @@ impl SignificanceLevel {
     where
         S: AsRef<str>,
     {
-        str::parse(code.as_ref()).unwrap_or_default()
+        match code.as_ref() {
+            "T" => Self::Test,
+            "S" => Self::Statement,
+            "E" => Self::Emergency,
+            "A" => Self::Watch,
+            "W" => Self::Warning,
+            _ => Self::Unknown,
+        }
     }
 
     /// Human-readable string representation
@@ -188,6 +195,25 @@ impl fmt::Display for SignificanceLevel {
             self.as_code_str().fmt(f)
         } else {
             self.as_display_str().fmt(f)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use strum::IntoEnumIterator;
+
+    use super::*;
+
+    #[test]
+    fn test_str_conversion() {
+        for sig in SignificanceLevel::iter() {
+            if sig == SignificanceLevel::Unknown {
+                continue;
+            }
+
+            let inp = SignificanceLevel::from(sig.as_code_str());
+            assert_eq!(inp, sig);
         }
     }
 }
