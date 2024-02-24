@@ -114,7 +114,7 @@ jobs:
         enableCrossOsArchive: true
         fail-on-cache-miss: true
 
-    - name: Build and test samedec
+    - name: Build and unit-test samedec
       shell: bash
       run: |
         cargo test --frozen -p samedec --verbose
@@ -122,13 +122,6 @@ jobs:
     - name: Run integration tests
       shell: bash
       run: |
-        set -e;
-        for file in $(basename -s .bin sample/*.s16le.bin); do
-          printf '[%s]\n' "$file";
-          cargo run -p samedec -- -r 22050 <"sample/$file.bin" | tee result;
-          cmp result "sample/$file.txt" || {
-            echo "FAIL!";
-            exit 1;
-          };
-          echo "PASS";
-        done
+        pushd sample
+        ./test.sh
+        popd

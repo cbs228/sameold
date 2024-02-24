@@ -96,18 +96,19 @@ sometimes referred to in your audio drivers as `s16ne`.
 The sampling `--rate` you set in `samedec` must match the sampling rate of the
 signal you are piping in. `samedec`'s demodulator will be designed for whatever
 `--rate` you request, and it can work with a variety of sampling rates. We
-recommend using at least `8000` Hz. Higher sampling rates will cause `samedec`
-to use more CPU and I/O throughput, but the difference may not be particularly
-important on most systems.
+recommend using your sound card's native sampling rate, which is often either
+`44100` Hz or `48000` Hz.
 
 On linux, you can obtain piped audio with either
+[`pw-record`](https://manpages.ubuntu.com/manpages/lunar/man1/pw-play.1.html)
+(PipeWire),
 [`parec`](https://manpages.debian.org/testing/pulseaudio-utils/parec.1.en.html)
-(PulseAudio) or
+(PulseAudio), or
 [`arecord`](https://manpages.debian.org/testing/alsa-utils/arecord.1.en.html)
-(ALSA). Both are preinstalled on most desktop distributions.
+(ALSA). Most desktop distributions have at least one of these preinstalled.
 
 ```bash
-parec --channels 1 --format s16ne --rate 22050 --latency-msec 500 \
+pw-record --channels 1 --format s16 --rate 22050 -- - \
     | samedec -r 22050
 ```
 
@@ -168,6 +169,9 @@ broken.
 > from Wikimedia Commons. Running:
 >
 > ```bash
+> curl -C - -o Same.wav \
+>     https://upload.wikimedia.org/wikipedia/commons/2/25/Same.wav
+>
 > sox 'Same.wav' -t raw -r 22.05k -e signed -b 16 -c 1 - | \
 >     samedec -r 22050
 > ```
@@ -273,19 +277,35 @@ The child process receives the following additional environment variables:
 
 * `SAMEDEC_EVT`: the three-character SAME event code, like "`RWT`"
 
-* `SAMEDEC_EVENT`: human-readable event name: "`Required Weekly Test`." If the
-  event code is not known, and it its significance level is also unknown, then
-  this string will be "`Unrecognized`."
+* `SAMEDEC_EVENT`: human-readable event description, including its significance
+  level: "`Required Weekly Test`." If the event code is not known, and it its
+  significance level is also unknown, then this string will be
+  "`Unrecognized Warning`."
 
 * `SAMEDEC_SIGNIFICANCE`: one-character significance level. This variable will
   be empty if the significance level could not be determined (i.e., because
   the event code is unknown).
-  * `T`: Test
-  * `M`: Message
-  * `S`: Statement
-  * `E`: Emergency
-  * `A`: Watch
-  * `W`: Warning
+
+  |       |                 |
+  |-------|-----------------|
+  | "`T`" | Test            |
+  | "`S`" | Statement       |
+  | "`E`" | Emergency       |
+  | "`A`" | Watch           |
+  | "`W`" | Warning         |
+  | ""    | Unknown         |
+
+* `SAMEDEC_SIG_NUM`: significance level, expressed as a whole number
+  in increasing order of severity.
+
+  |       |                 |
+  |-------|-----------------|
+  | "`0`" | Test            |
+  | "`1`" | Statement       |
+  | "`2`" | Emergency       |
+  | "`3`" | Watch           |
+  | "`4`" | Warning         |
+  | "`5`" | Unknown         |
 
 * `SAMEDEC_LOCATIONS`: *space-delimited* list of FIPS location codes, which are
   six characters long. Example: "`012057 012081`"
@@ -304,6 +324,12 @@ The child process receives the following additional environment variables:
   one can be calculated. The same rules apply as `SAMEDEC_ISSUETIME` above.
   Remember: the purge time is the expiration time of the *message* and *not* the
   expected duration of the hazard.
+
+* `SAMEDEC_IS_NATIONAL`: Set to "`Y`" if the message contains a recognized
+  national-level event and location code. The message may either be a test or
+  an actual emergency. Clients are **strongly encouraged** to always play
+  national-level messages and to never provide the option to suppress them.
+  For non-national messages, this variable is set to the empty string.
 
 ### Design Requirements for Child Processes
 
@@ -346,17 +372,21 @@ must have the execute bit set (`chmod +x …`).
 ```bash
 #!/bin/bash
 
-[ "${SAMEDEC_SIGNIFICANCE}" = "W" ] || exit 0
+[[ -n "${SAMEDEC_IS_NATIONAL}" || "${SAMEDEC_SIG_NUM}" -ge 4 ]] || exit 0
 
-exec pacat --channels 1 --format s16ne \
-        --rate "${SAMEDEC_RATE}" --latency-msec 500 "$@"
+exec play -q -t raw --rate "${SAMEDEC_RATE}" -e signed -b 16 -c 1 - "$@"
 ```
 
-The above script will use pulseaudio (on linux) to play back any message which
-has a significance level of Warning (`W`). We use `exec` to replace the running
-shell with `pacat`. `--rate "${SAMEDEC_RATE}"` tells `pacat` what the sampling
-rate is. The "`$@`" is a bashism which passes the remaining input arguments to
-the script to `pacat` as arguments.
+The above script will use sox to play back any message which:
+
+1. is a national-level activation; **OR**
+2. has a significance level of at least Warning
+
+We use `exec` to replace the running shell with `play`.
+`--rate "${SAMEDEC_RATE}"` tells sox what the sampling rate is.
+The "`$@`" is a bashism which passes the remaining input arguments to
+the script to sox as arguments.
+
 
 If you name this script `./play_on_warn.sh`, then an example invocation of
 `samedec` is:

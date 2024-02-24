@@ -48,16 +48,6 @@ fn samedec() -> Result<(), CliError> {
         std::iter::from_fn(|| Some(inbuf.read_i16::<NativeEndian>().ok()?)),
     );
 
-    // flush all data samples out of the decoder
-    match rx.flush() {
-        Some(lastmsg) => {
-            if !args.quiet {
-                println!("{}", lastmsg)
-            }
-        }
-        None => {}
-    }
-
     Ok(())
 }
 
@@ -90,7 +80,7 @@ fn file_setup<'stdin>(
 ) -> Result<Box<dyn io::BufRead + 'stdin>, anyhow::Error> {
     if args.input_is_stdin() {
         info!("SAME decoder reading standard input");
-        if !atty::is(atty::Stream::Stdin) {
+        if !is_terminal(&std::io::stdin()) {
             Ok(Box::new(io::BufReader::new(stdin)))
         } else {
             Err(anyhow!(
@@ -107,4 +97,20 @@ or similar into this program."
                 .with_context(|| format!("Unable to open --file \"{}\"", args.file))?,
         )))
     }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_terminal<S>(stream: &S) -> bool
+where
+    S: std::os::fd::AsRawFd,
+{
+    terminal_size::terminal_size_using_fd(stream.as_raw_fd()).is_some()
+}
+
+#[cfg(target_os = "windows")]
+fn is_terminal<S>(stream: &S) -> bool
+where
+    S: std::os::windows::io::AsRawHandle,
+{
+    terminal_size::terminal_size_using_handle(stream.as_raw_handle()).is_some()
 }

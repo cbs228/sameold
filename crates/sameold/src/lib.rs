@@ -74,7 +74,7 @@
 //! The digital receiver is created via a
 //! [builder](crate::SameReceiverBuilder).
 //!
-//! The [`SameReceiver`](crate::SameReceiver) binds by iterator to any
+//! The [`SameReceiver`] binds by iterator to any
 //! source of `f32` PCM mono (1-channel) audio samples. If you're using `i16`
 //! samples (as most sound cards do), you'll need to cast them to `f32`.
 //! There is no need to scale them as long as you configure the
@@ -119,7 +119,7 @@
 //! Events from both layers can be captured using the
 //! [`iter_events()`](crate::SameReceiver::iter_events) method instead of
 //! `iter_messages()`. The events iterator can be used to obtain raw framed
-//! [bursts](crate::SameEvent::burst) without delay or error-correction.
+//! [bursts](crate::SameReceiverEvent::burst) without delay or error-correction.
 //! Events can also report the detection of SAME carrier signals before and
 //! during message decoding.
 //!
@@ -144,8 +144,9 @@
 //! `hdr` from the previous example as follows:
 //!
 //! ```
+//! # use std::fmt;
 //! # use sameold::{MessageHeader};
-//! use sameold::{EventCode, Originator, SignificanceLevel};
+//! use sameold::{Phenomenon, Originator, SignificanceLevel};
 //! # let hdr = MessageHeader::new(
 //! #     "ZCZC-WXR-RWT-012345-567890-888990+0015-0321115-KLOX/NWS-"
 //! # ).expect("fail to parse");
@@ -153,15 +154,19 @@
 //! // what organization originated the message?
 //! assert_eq!(Originator::NationalWeatherService, hdr.originator());
 //!
-//! // event code
-//! // in actual implementations, handle this error gracefully!
-//! let evt = hdr.event().expect("unknown event code");
-//! assert_eq!(EventCode::RequiredWeeklyTest, evt);
+//! // parse SAME event code `RWT`
+//! let evt = hdr.event();
 //!
-//! // events have a "significance level" which describes how
-//! // urgent or actual they are
-//! assert_eq!(SignificanceLevel::Test, evt.to_significance_level());
+//! //   the Phenomenon describes what is occurring
+//! assert_eq!(Phenomenon::RequiredWeeklyTest, evt.phenomenon());
+//!
+//! //   the SignificanceLevel indicates the overall severity and/or
+//! //   how intrusive or noisy the alert should be
+//! assert_eq!(SignificanceLevel::Test, evt.significance());
 //! assert!(SignificanceLevel::Test < SignificanceLevel::Warning);
+//!
+//! //   Display to the user
+//! assert_eq!("Required Weekly Test", &format!("{}", evt));
 //!
 //! // location codes are accessed by iterator
 //! let first_location = hdr.location_str_iter().next();
@@ -205,6 +210,11 @@
 //!   and other fields as true UTC timestamps. If enabled, `chrono`
 //!   becomes part of this crate's public API.
 //!
+//! ## MSRV Policy
+//!
+//! A minimum supported rust version (MSRV) increase will be treated as a minor
+//! version bump.
+//!
 //! ## Contributing
 //!
 //! If you have a **recording** of a signal that you think should demodulate, but
@@ -219,14 +229,15 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod eventcodes;
 mod message;
 mod receiver;
 
 pub use message::{
-    EventCode, EventCodeIter, InvalidDateErr, Message, MessageDecodeErr, MessageHeader,
-    MessageResult, Originator, SignificanceLevel, UnknownSignificanceLevel, UnrecognizedEventCode,
+    EventCode, InvalidDateErr, Message, MessageDecodeErr, MessageHeader, MessageResult, Originator,
+    Phenomenon, SignificanceLevel,
 };
 pub use receiver::{
-    EqualizerBuilder, LinkState, SameEvent, SameEventType, SameReceiver, SameReceiverBuilder,
-    TransportState,
+    EqualizerBuilder, LinkState, SameEventType, SameReceiver, SameReceiverBuilder,
+    SameReceiverEvent, TransportState,
 };

@@ -25,7 +25,7 @@ use std::convert::From;
 use std::iter::{IntoIterator, Iterator};
 
 pub use self::builder::{EqualizerBuilder, SameReceiverBuilder};
-pub use self::output::{LinkState, SameEvent, SameEventType, TransportState};
+pub use self::output::{LinkState, SameEventType, SameReceiverEvent, TransportState};
 
 use crate::Message;
 
@@ -83,7 +83,7 @@ pub struct SameReceiver {
     input_sample_counter: u64,
     link_state: LinkState,
     transport_state: TransportState,
-    event_queue: std::collections::VecDeque<SameEvent>,
+    event_queue: std::collections::VecDeque<SameReceiverEvent>,
     ted_sample_clock: u32,
     samples_until_next_ted: f32,
     force_eom_at_sample: Option<u64>,
@@ -93,7 +93,7 @@ impl SameReceiver {
     /// Decode events and messages from a source of audio
     ///
     /// Bind an iterator which will consume the `input` and
-    /// produce SAME [`SameEvent`] events, which include:
+    /// produce SAME [`SameReceiverEvent`] events, which include:
     ///
     /// * notifications about acquired and dropped carrier,
     /// * attempts to frame messages; and
@@ -116,7 +116,10 @@ impl SameReceiver {
     /// instead if you are only interested in successful
     /// decodes.
     #[must_use = "iterators are lazy and do nothing unless consumed"]
-    pub fn iter_events<'rx, I>(&'rx mut self, input: I) -> impl Iterator<Item = SameEvent> + 'rx
+    pub fn iter_events<'rx, I>(
+        &'rx mut self,
+        input: I,
+    ) -> impl Iterator<Item = SameReceiverEvent> + 'rx
     where
         I: IntoIterator<Item = f32> + 'rx,
     {
@@ -227,7 +230,7 @@ impl SameReceiver {
     /// exhausted or an event of interest to the modem occurs. If
     /// one does, it is emitted.
     #[inline]
-    fn process<I>(&mut self, audio_iter: &mut I) -> Option<SameEvent>
+    fn process<I>(&mut self, audio_iter: &mut I) -> Option<SameReceiverEvent>
     where
         I: Iterator<Item = f32>,
     {
@@ -243,7 +246,7 @@ impl SameReceiver {
                 if link_state != self.link_state {
                     // report change
                     self.link_state = link_state.clone();
-                    self.event_queue.push_back(SameEvent::new(
+                    self.event_queue.push_back(SameReceiverEvent::new(
                         self.link_state.clone(),
                         self.input_sample_counter,
                     ));
@@ -255,7 +258,7 @@ impl SameReceiver {
                     .filter(|newstate| newstate != &self.transport_state)
                 {
                     self.transport_state = transport_state;
-                    self.event_queue.push_back(SameEvent::new(
+                    self.event_queue.push_back(SameReceiverEvent::new(
                         self.transport_state.clone(),
                         self.input_sample_counter,
                     ));
@@ -569,7 +572,7 @@ impl<'rx, 'data, I> Iterator for SameReceiverIter<'rx, I>
 where
     I: Iterator<Item = f32>,
 {
-    type Item = SameEvent;
+    type Item = SameReceiverEvent;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.receiver.process(&mut self.source).and_then(|evt| {

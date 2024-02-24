@@ -7,7 +7,7 @@ use std::io;
 use std::process::{Child, Command, Stdio};
 
 use chrono::{DateTime, Utc};
-use sameold::{MessageHeader, UnrecognizedEventCode};
+use sameold::MessageHeader;
 
 /// Spawn a child process to handle the given message
 ///
@@ -40,6 +40,7 @@ where
     };
 
     let locations: Vec<&str> = header.location_str_iter().collect();
+    let evt = header.event();
 
     Command::new(cmd)
         .stdin(Stdio::piped())
@@ -54,11 +55,22 @@ where
             header.originator().as_display_str(),
         )
         .env(childenv::SAMEDEC_EVT, header.event_str())
-        .env(childenv::SAMEDEC_EVENT, msg_to_event(&header))
-        .env(childenv::SAMEDEC_SIGNIFICANCE, msg_to_significance(header))
+        .env(childenv::SAMEDEC_EVENT, evt.to_string())
+        .env(
+            childenv::SAMEDEC_SIGNIFICANCE,
+            evt.significance().as_code_str(),
+        )
+        .env(
+            childenv::SAMEDEC_SIG_NUM,
+            (evt.significance() as u8).to_string(),
+        )
         .env(childenv::SAMEDEC_LOCATIONS, locations.join(" "))
         .env(childenv::SAMEDEC_ISSUETIME, issue_ts)
         .env(childenv::SAMEDEC_PURGETIME, purge_ts)
+        .env(
+            childenv::SAMEDEC_IS_NATIONAL,
+            bool_to_env(header.is_national()),
+        )
         .spawn()
 }
 
@@ -110,13 +122,34 @@ mod childenv {
     /// Significance levels are assigned by the `sameold`
     /// developers.
     ///
-    /// * `T`: Test
-    /// * `M`: Message
-    /// * `S`: Statement
-    /// * `E`: Emergency
-    /// * `A`: Watch
-    /// * `W`: Warning
+    /// |       |                 |
+    /// |-------|-----------------|
+    /// | "`T`" | Test            |
+    /// | "`S`" | Statement       |
+    /// | "`E`" | Emergency       |
+    /// | "`A`" | Watch           |
+    /// | "`W`" | Warning         |
+    /// | "``"  | Unknown         |
     pub const SAMEDEC_SIGNIFICANCE: &str = "SAMEDEC_SIGNIFICANCE";
+
+    /// SAME event significance level, numeric
+    ///
+    /// The significance level assigned to the SAME event code,
+    /// expressed as a whole number in increasing order of
+    /// severity.
+    ///
+    /// Significance levels are assigned by the `sameold`
+    /// developers.
+    ///
+    /// |       |                 |
+    /// |-------|-----------------|
+    /// | "`0`" | Test            |
+    /// | "`1`" | Statement       |
+    /// | "`2`" | Emergency       |
+    /// | "`3`" | Watch           |
+    /// | "`4`" | Warning         |
+    /// | "`5`" | Unknown         |
+    pub const SAMEDEC_SIG_NUM: &str = "SAMEDEC_SIG_NUM";
 
     /// FIPS code locations
     ///
@@ -141,23 +174,22 @@ mod childenv {
     /// clock. It will be empty if a complete timestamp cannot be
     /// calculated.
     pub const SAMEDEC_PURGETIME: &str = "SAMEDEC_PURGETIME";
-}
 
-// convert message event code to string
-fn msg_to_event(msg: &MessageHeader) -> String {
-    match msg.event() {
-        Ok(evt) => evt.as_display_str().to_owned(),
-        Err(err) => format!("{}", err),
-    }
-}
-
-// convert message event code to significance
-fn msg_to_significance(msg: &MessageHeader) -> &'static str {
-    match msg.event() {
-        Ok(evt) => evt.to_significance_level().as_str(),
-        Err(UnrecognizedEventCode::WithSignificance(sl)) => sl.as_str(),
-        Err(UnrecognizedEventCode::Unrecognized) => "",
-    }
+    /// True if the message is a national activation
+    ///
+    /// This variable is set to `Y` if:
+    ///
+    /// - the location code in the SAME message indicates
+    ///   national applicability; and
+    ///
+    /// - the event code is reserved for national use
+    ///
+    /// Otherwise, this variable is set to the empty string.
+    ///
+    /// The message may either be a national test or a national emergency.
+    /// Clients are **strongly encouraged** to always play national-level
+    /// messages and to never provide the option to suppress them.
+    pub const SAMEDEC_IS_NATIONAL: &str = "SAMEDEC_IS_NATIONAL";
 }
 
 // convert DateTime to UTC unix timestamp in seconds, as string
@@ -165,18 +197,21 @@ fn time_to_unix_str(tm: DateTime<Utc>) -> String {
     format!("{}", tm.format("%s"))
 }
 
+// convert true → "Y", false → ""
+//
+// this is useful for environment variables since empty values
+// are usually treated as false
+fn bool_to_env(val: bool) -> &'static str {
+    if val {
+        "Y"
+    } else {
+        ""
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use sameold::MessageHeader;
-
-    #[test]
-    fn test_msg_to_significance() {
-        const MSG: &str = "ZCZC-WXR-RWT-012345-567890-888990+0351-3662322-NOCALL-";
-        let msg = MessageHeader::new(MSG).unwrap();
-        assert_eq!("T", msg_to_significance(&msg));
-    }
 
     #[test]
     fn test_time_to_unix_str() {
