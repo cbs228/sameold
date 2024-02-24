@@ -62,6 +62,10 @@ where
         .env(childenv::SAMEDEC_LOCATIONS, locations.join(" "))
         .env(childenv::SAMEDEC_ISSUETIME, issue_ts)
         .env(childenv::SAMEDEC_PURGETIME, purge_ts)
+        .env(
+            childenv::SAMEDEC_IS_NATIONAL,
+            bool_to_env(header.is_national()),
+        )
         .spawn()
 }
 
@@ -143,11 +147,39 @@ mod childenv {
     /// clock. It will be empty if a complete timestamp cannot be
     /// calculated.
     pub const SAMEDEC_PURGETIME: &str = "SAMEDEC_PURGETIME";
+
+    /// True if the message is a national activation
+    ///
+    /// This variable is set to `Y` if:
+    ///
+    /// - the location code in the SAME message indicates
+    ///   national applicability; and
+    ///
+    /// - the event code is reserved for national use
+    ///
+    /// Otherwise, this variable is set to the empty string.
+    ///
+    /// The message may either be a national test or a national emergency.
+    /// Clients are **strongly encouraged** to always play national-level
+    /// messages and to never provide the option to suppress them.
+    pub const SAMEDEC_IS_NATIONAL: &str = "SAMEDEC_IS_NATIONAL";
 }
 
 // convert DateTime to UTC unix timestamp in seconds, as string
 fn time_to_unix_str(tm: DateTime<Utc>) -> String {
     format!("{}", tm.format("%s"))
+}
+
+// convert true → "Y", false → ""
+//
+// this is useful for environment variables since empty values
+// are usually treated as false
+fn bool_to_env(val: bool) -> &'static str {
+    if val {
+        "Y"
+    } else {
+        ""
+    }
 }
 
 #[cfg(test)]

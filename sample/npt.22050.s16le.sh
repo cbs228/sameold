@@ -9,6 +9,7 @@ exec 0>/dev/null
 [ "$SAMEDEC_ORG" = "PEP" ]
 [ "$SAMEDEC_SIGNIFICANCE" = "T" ]
 [ "$SAMEDEC_LOCATIONS" = "000000" ]
+[ "$SAMEDEC_IS_NATIONAL" = "Y" ]
 
 lifetime=$(( SAMEDEC_PURGETIME - SAMEDEC_ISSUETIME))
 [ "$lifetime" -eq $(( 30*60 )) ]

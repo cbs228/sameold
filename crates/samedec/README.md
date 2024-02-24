@@ -306,6 +306,12 @@ The child process receives the following additional environment variables:
   Remember: the purge time is the expiration time of the *message* and *not* the
   expected duration of the hazard.
 
+* `SAMEDEC_IS_NATIONAL`: Set to "`Y`" if the message contains a recognized
+  national-level event and location code. The message may either be a test or
+  an actual emergency. Clients are **strongly encouraged** to always play
+  national-level messages and to never provide the option to suppress them.
+  For non-national messages, this variable is set to the empty string.
+
 ### Design Requirements for Child Processes
 
 `samedec` provides child processes with input samples synchronously, via
