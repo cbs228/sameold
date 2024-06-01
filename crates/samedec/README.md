@@ -114,19 +114,42 @@ pw-record --channels 1 --format s16 --rate 22050 -- - \
 
 ### Via a Software-Defined Radio
 
+> For easy use with rtl-sdr dongles, first identify a weather station that you
+> can receive and hear clearly.
+>
+> ```bash
+> rtl_fm -f 162.4M -M fm -s 48k -o 4 -E dc -g 0 -F 9 | \
+>     play -t raw -r 48k -e signed -b 16 -c 1 -
+> ```
+>
+> Adjust the `-g GAIN` value, `-F FIR_SIZE`, and `-E` options until you have
+> clean audio that is largely free of noise and glitches. The gain is
+> particularly important.
+>
+> Then you can pipe the audio into samedec:
+>
+> ```bash
+> rtl_fm -f 162.4M -M fm -s 48k -o 4 -E dc -g 0 -F 9 | \
+>     samedec -r 48000
+> ```
+
 Use any compatible SDR software to demodulate and recover passband audio from a
 station of interest. You will need a way to pipe passband audio into `samedec`.
 
 * Some programs, like `rtl_fm`, support piping output directly.
 
-* Some programs, like `gqrx`, can output audio via UDP. You can obtain UDP input
-  with either
+* [gqrx](https://www.gqrx.dk/) can output demodulated audio via UDP. Tune to the
+  station you want, then click the `UDP` button in the Audio pane. You can
+  receive the UDP audio with either
   [`netcat`](https://manpages.debian.org/testing/netcat-traditional/nc.1.en.html)
-  or [`socat`](https://manpages.debian.org/testing/socat/socat.1.en.html).
+  or [`socat`](https://manpages.debian.org/testing/socat/socat.1.en.html)
+  and pipe it into samedec.
 
   ```bash
   nc -l -u 7355 | samedec -r 48000
   ```
+
+  You can then `Mute` the audio in gqrx.
 
 * For some programs, you may need to create a virtual audio device and direct
   the audio output to that. PulseAudio can do this "out of the box" with
