@@ -272,12 +272,12 @@ jobs:
     needs: vendor_sources
 
     env:
-      CARGO_BUILD_TARGET: x86_64-apple-darwin
+      CARGO_BUILD_TARGET: aarch64-apple-darwin
       CARGO_NET_OFFLINE: "true"
       CARGO_INSTALL_ROOT: "install/"
       RUSTFLAGS: '-C strip=symbols'
       samedec_exe: 'install/bin/samedec'
-      samedec_target_exe: install/bin/samedec-x86_64-apple-darwin
+      samedec_target_exe: install/bin/samedec-aarch64-apple-darwin
 
     steps:
     - uses: actions/checkout@v3
