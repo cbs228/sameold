@@ -11,6 +11,45 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  # lints
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Checking for whitespace errors (PRs only)
+      if: github.event.pull_request.base.sha
+      run: |
+        git diff --check "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" || {
+          echo >&2 "Your pull request introduces whitespace errors,";
+          echo >&2 "which is not allowed. Please run:";
+          echo >&2;
+          echo >&2 "    git rebase --whitespace=fix";
+          echo >&2 "    git push -f";
+          echo >&2;
+          echo >&2 "to correct and resubmit.";
+          exit 1;
+        }
+
+    - name: Checking for cargo-fmt errors
+      run: |
+        cargo fmt --check || { \
+          echo >&2 "Your pull request does not conform to cargo-fmt";
+          echo >&2 "Rust format, which is not allowed. Please run:";
+          echo >&2;
+          echo >&2 "    cargo fmt";
+          echo >&2 "    git commit -a --amend";
+          echo >&2 "    git push -f";
+          echo >&2;
+          echo >&2 "to correct and resubmit. If \`cargo fmt\` touches";
+          echo >&2 "code which is not part of your MR, please let us";
+          echo >&2 "know in the comments.";
+          exit 1;
+        }
+
   # run `cargo vendor` and cache it
   vendor_sources:
     runs-on: ubuntu-latest
@@ -49,6 +88,10 @@ jobs:
         mkdir -p .cargo
         mkdir -p vendor
         cargo vendor --versioned-dirs --locked >.cargo/config.toml
+
+    - name: Check compiler lints
+      run: cargo check --workspace
+      continue-on-error: true
 
   test_sameold:
     strategy:
