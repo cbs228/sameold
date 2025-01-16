@@ -168,3 +168,39 @@ jobs:
         pushd sample
         ./test.sh
         popd
+
+  # Linux builds within our containerized release environment
+  test_samedec_containerized:
+    runs-on: ubuntu-latest
+
+    needs: vendor_sources
+
+    container:
+      image: ghcr.io/cbs228/sameold/builder/x86_64-unknown-linux-gnu:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      env:
+        CARGO_NET_OFFLINE: "true"
+        CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - uses: actions/cache/restore@v4
+      name: Restore crate cargo-vendor cache
+      with:
+        path: |
+          .cargo
+          vendor
+        key: cargo-vendor-${{ hashFiles('**/Cargo.lock') }}
+        enableCrossOsArchive: true
+        fail-on-cache-miss: true
+
+    - name: Cross-compile and cross-test
+      run: cargo test --frozen --verbose
+
+    - name: Run integration tests on debug-mode build
+      run: |
+        cargo run -p samedec -- --version &&
+        cd sample && ./test.sh

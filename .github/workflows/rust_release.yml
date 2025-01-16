@@ -60,38 +60,23 @@ jobs:
 
     needs: vendor_sources
 
-    # qemu cross-compiling is very slow
-    timeout-minutes: 60
-
-    env:
-      # See <https://hub.docker.com/_/rust> for list of tags
-      BUILD_RUST_TAG: 1.70.0
-      BUILD_OS_GNU: slim-buster
-      BUILD_OS_MUSL: alpine
-      CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
-
     strategy:
       matrix:
         include:
-          - docker: linux/amd64
-            os: slim-buster
-            rust: x86_64-unknown-linux-gnu
+          - target: x86_64-unknown-linux-gnu
+          - target: aarch64-unknown-linux-gnu
+          - target: armv7-unknown-linux-gnueabihf
+          - target: i686-unknown-linux-gnu
 
-          - docker: linux/amd64
-            os: alpine
-            rust: x86_64-unknown-linux-musl
-
-          - docker: linux/arm64
-            os: slim-buster
-            rust: aarch64-unknown-linux-gnu
-
-          - docker: linux/arm64
-            os: alpine
-            rust: aarch64-unknown-linux-musl
-
-          - docker: linux/arm/v7
-            os: slim-buster
-            rust: armv7-unknown-linux-gnueabihf
+    container:
+      image: ghcr.io/cbs228/sameold/builder/${{ matrix.target }}:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      env:
+        CARGO_NET_OFFLINE: "true"
+        CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+        RUSTFLAGS: '-C strip=symbols'
 
     steps:
     - uses: actions/checkout@v3
@@ -106,55 +91,26 @@ jobs:
         enableCrossOsArchive: true
         fail-on-cache-miss: true
 
-    - name: Set swap space
-      uses: pierotofy/set-swap-space@v1.0
-      with:
-        swap-size-gb: 10
-
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v3
-      with:
-        platforms: all
-
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-
-    - name: Prepare output directory
+    - name: Cross-compile, cross-test, and install
       run: |
-        mkdir -m 700 -p "install/bin"
+        cargo test --offline --frozen --release --workspace &&
+        cargo install --offline --frozen --path=crates/samedec
 
-      # Builds a special target in our Dockerfile which builds
-      # an empty image containing only our Rust binary. This task
-      # exports the file to
-      # install/bin/samedec-x86_64-unknown-linux-gnu
-      # and the like.
-    - name: Build
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        push: false
-        load: false
-        cache-from: type=gha,scope=${{ matrix.os }}_${{ matrix.rust }}
-        cache-to: type=gha,mode=max,scope=${{ matrix.os }}_${{ matrix.rust }}
-        tags: samedec:latest
-        target: localfile
-        build-args: |
-          CARGO_BUILD_TARGET=${{ matrix.rust }}
-          CARGO_NET_OFFLINE=true
-          BUILD_OS_TAG=${{ matrix.os }}
-          BUILD_RUST_TAG=${{ env.BUILD_RUST_TAG }}
-        platforms: ${{ matrix.docker }}
-        outputs: "type=local,dest=install/bin"
+    - name: Run integration tests on release-mode build
+      run: |
+        qemu-run-maybe samedec --version &&
+        cd sample &&
+        ./test.sh qemu-run-maybe samedec
 
     - name: Copy artifact
       run: |
-        cp install/bin/samedec install/bin/samedec-${{ matrix.rust }}
+        cp /install/bin/samedec /install/bin/samedec-${{ matrix.target }}
 
     - name: Store artifact
       uses: actions/upload-artifact@v3
       with:
-        name: samedec-${{ matrix.rust }}
-        path: install/bin/samedec-${{ matrix.rust }}
+        name: samedec-${{ matrix.target }}
+        path: /install/bin/samedec-${{ matrix.target }}
         retention-days: 3
 
     - name: Upload tagged release
@@ -162,7 +118,7 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/samedec-')
       with:
         repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: install/bin/samedec-${{ matrix.rust }}
+        file: /install/bin/samedec-${{ matrix.target }}
         overwrite: true
 
     - name: Update tag for nightly release
@@ -181,7 +137,7 @@ jobs:
         release_name: "Nightly Release"
         body: "This is a rolling release built from the latest `develop` branch."
         prerelease: true
-        file: install/bin/samedec-${{ matrix.rust }}
+        file: /install/bin/samedec-${{ matrix.target }}
         overwrite: true
 
   # Win32 build, on whatever machine github has available
