@@ -14,21 +14,14 @@
 
 set -eu
 
-if [ -z "${SAMEDEC:-}" ]; then
-  SAMEDEC="cargo"
-  ARGS="run -q -p samedec --"
-else
-  ARGS=""
-fi
-
 run_samedec() {
-  # Usage: run_samedec FILE
+  # Usage: run_samedec FILE ARGS
   # Runs `samedec` on given input file stem
 
   infile="$1"
+  shift
 
-  #shellcheck disable=SC2086
-  "$SAMEDEC" $ARGS \
+  "$@" \
     --rate 22050 \
     --file "${infile}.bin" \
     -- \
@@ -36,12 +29,19 @@ run_samedec() {
     "${infile}.sh"
 }
 
+if [ "$#" -lt 1 ]; then
+  exec "$0" cargo run -q -p samedec --
+fi
+
+exe="${0?no executable path}"
+cd "$(dirname "$exe")"
+
 for file in $(basename -s .bin -- *.s16le.bin); do
   [ -e "${file}.bin" ] || exit 1
 
   printf '[%s]\n' "$file"
 
-  output="$(run_samedec "$file")"
+  output="$(run_samedec "$file" "$@")"
   expect="$(cat "${file}.txt")"
 
   echo "$output"

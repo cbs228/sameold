@@ -1,0 +1,42 @@
+#!/bin/sh
+#
+# Runs a Rust binary in qemu user-mode emulation if required.
+#
+# Not all containerized runtime environments are created
+# equal. Some have binfmt configured so that everything
+# Just Works. Others do not. This script manually maps
+# various Linux Rust triples to their qemu equivalents.
+
+program="${1?missing PROGRAM}"
+shift || true
+
+if [ ! -x "$program" ]; then
+  program="$(command -v "$program")"
+fi
+
+case "${CARGO_BUILD_TARGET:-}" in
+  ("$(cat /etc/rust-native-arch)")
+    # the build target is the native architecture
+    exec "$program" "$@"
+    ;;
+  (aarch64-unknown-linux-*)
+    exec qemu-aarch64 -- "$program" "$@"
+    ;;
+  (armv7-unknown-linux-*eabihf)
+    exec qemu-arm -- "$program" "$@"
+    ;;
+  (i686-unknown-linux-*)
+    exec qemu-i386 -- "$program" "$@"
+    ;;
+  (x86_64-unknown-linux-*)
+    exec qemu-x86_64 -- "$program" "$@"
+    ;;
+  ('')
+    # unset; assume native
+    exec "$program" "$@"
+    ;;
+  (*)
+    echo >&2 "FATAL: Unknown CARGO_BUILD_TARGET=${CARGO_BUILD_TARGET}"
+    exit 101;
+  ;;
+esac

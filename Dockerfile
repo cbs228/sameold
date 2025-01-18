@@ -105,7 +105,7 @@ COPY sample sample
 
 RUN samedec --version && \
     cd sample && \
-    SAMEDEC=/usr/local/bin/samedec ./test.sh && \
+    ./test.sh /usr/local/bin/samedec && \
     cd ..
 
 ###
