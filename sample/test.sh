@@ -6,8 +6,10 @@
 #     ./test.sh
 #
 # By default, this will build and run a debug-mode samedec
-# with cargo. You may also set SAMEDEC to the path to an
-# existing executable.
+# with cargo. If you want to run an installed samedec binary,
+# instead invoke it as:
+#
+#     ./test.sh path/to/samedec
 #
 # The integration tests ensure that samedec's child process
 # spawning and environment variable assignment works.
