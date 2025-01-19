@@ -2,7 +2,7 @@
 # Debian base image, with i386 toolchains
 #
 
-FROM ghcr.io/cbs228/sameold/builder.base:latest
+FROM ghcr.io/cbs228/sameold/builder/rust:latest
 
 RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
     --mount=target=/var/cache/apt,type=cache,sharing=locked \
@@ -28,5 +28,4 @@ ENV CARGO_BUILD_TARGET="$RUST_TARGET" \
 
 USER builder
 
-LABEL org.opencontainers.image.source="https://github.com/cbs228/sameold"
-LABEL org.opencontainers.image.description="Linux cross-compiling Rust environment for sameold and samedec."
+LABEL org.opencontainers.image.description="A Debian-based Rust cross-compiling environment."

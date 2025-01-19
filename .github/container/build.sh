@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # (re)build the CI container image
-
-set -euo pipefail
+#
+# run with --push to push the images.
 
 now="$(date -u +'%Y-%m-%d')"
 
@@ -16,8 +16,41 @@ usage() {
   cat <<EOF
 Usage: $0 [--push]
 
-Build container images for the CI environment
+Build container images for the CI environment. To select
+a particular container platform tool like podman, set
+
+    BUILDER=podman
+
+Prior to pushing, make sure to
+
+    podman login "$CONTAINER_PREFIX"
+
+or equivalent.
 EOF
+}
+
+run() {
+  # Echo and run
+  echo >&2 "$@"
+  "$@"
+}
+
+container_builder() {
+  # Usage: automatically detect container platform command
+
+  if [ -x "${BUILDER:-}" ]; then
+    echo "${BUILDER}"
+  elif [ -n "${BUILDER:-}" ]; then
+    command -v "${BUILDER}"
+  else
+    {
+      command -v podman || \
+      command -v docker
+    } 2>/dev/null || {
+      echo >&2 "FATAL: container platform tools not found"
+      return 1;
+    }
+  fi
 }
 
 container_name() {
@@ -27,11 +60,40 @@ container_name() {
   printf "$CONTAINER_FQNAME" "$1"
 }
 
-run() {
-  # Echo and run
-  echo >&2 "$@"
-  "$@"
+tagall() {
+  # Usage: tagall SHORTNAME TAG0 TAG1 ...
+  #
+  # Apply all tags to the given image, which must already be tagged as
+  # "current/container/prefix/$SHORTNAME:$TAG0"
+
+  local prefix
+  prefix="$(container_name "${1?}")"
+  shift
+
+  run "$BUILDER" tag "${@/#/"$prefix:"}"
 }
+
+pushall() {
+  # Usage: pushall SHORTNAME TAG0 TAG1 ...
+  #
+  # Push the given image "current/container/prefix/$SHORTNAME" and
+  # all the tags specified on the command line. The pushes are not
+  # atomic and will happen sequentially.
+
+  local prefix
+  prefix="$(container_name "${1?}")"
+  shift
+
+  local tag
+  for tag in "$@"; do
+    run "$BUILDER" push "${prefix}:${tag}"
+  done
+}
+
+# return if sourced
+(return 0 2>/dev/null) && return 0
+
+set -euo pipefail
 
 if ! options="$(getopt -o 'hp' --long help,push -- "$@")"; then
   usage >&2
@@ -52,18 +114,25 @@ while true; do
   shift || break
 done
 
+BUILDER="$(container_builder)"
 selfdir="$(dirname "${0?}")"
 
-[ -z "${push_images:-}" ] || \
-  podman login --authfile="${HOME}/.docker/config.json" "$CONTAINER_PREFIX"
-
 # build the base image
-base_tag="$(container_name base):latest"
+base_tag="$(container_name base):${CONTAINER_TAGS[0]}"
 
-run podman build \
+run "$BUILDER" build \
   -f "${selfdir?}/Dockerfile.base" \
-  --build-arg RUST_VERSIONS="${RUST_VERSIONS[*]}" \
   --tag "$base_tag" \
+  "${selfdir?}"
+
+# add rust to the base image
+rust_tag="$(container_name rust):${CONTAINER_TAGS[0]}"
+
+run "$BUILDER" build \
+  -f "${selfdir?}/Dockerfile.rust" \
+  --from "$base_tag" \
+  --build-arg RUST_VERSIONS="${RUST_VERSIONS[*]}" \
+  --tag "$rust_tag" \
   "${selfdir?}"
 
 # build architecture-specific images
@@ -71,23 +140,29 @@ for containerfile in "${selfdir}/"Dockerfile.rust.*; do
   platform_triple="${containerfile##*.}"
   cur_tag="$(container_name "$platform_triple"):${CONTAINER_TAGS[0]}"
 
-  run podman build \
-    --from "$base_tag" \
+  run "$BUILDER" build \
+    --from "$rust_tag" \
     -f "${containerfile}" \
     --tag "${cur_tag}" \
     "${selfdir?}"
 done
 
-# if all builds succeed, apply remaining tags and push
+# if all builds succeed, apply remaining tags...
+tagall base "${CONTAINER_TAGS[@]}"
+tagall rust "${CONTAINER_TAGS[@]}"
 for containerfile in "${selfdir}/"Dockerfile.rust.*; do
   platform_triple="${containerfile##*.}"
-  cur_base_name="$(container_name "$platform_triple")"
 
-  run podman tag "${CONTAINER_TAGS[@]/#/"$cur_base_name:"}"
+  tagall "$platform_triple" "${CONTAINER_TAGS[@]}"
+done
 
-  if [ -n "${push_images:-}" ]; then
-    for t in "${CONTAINER_TAGS[@]}"; do
-      run podman push "$cur_base_name:$t"
-    done
-  fi
+[ -n "${push_images:-}" ] || exit 0
+
+# ... and push
+pushall base "${CONTAINER_TAGS[@]}"
+pushall rust "${CONTAINER_TAGS[@]}"
+for containerfile in "${selfdir}/"Dockerfile.rust.*; do
+  platform_triple="${containerfile##*.}"
+
+  pushall "$platform_triple" "${CONTAINER_TAGS[@]}"
 done
