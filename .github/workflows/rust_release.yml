@@ -221,19 +221,25 @@ jobs:
         file: ${{ env.samedec_target_exe }}
         overwrite: true
 
-  # MacOS build, on whatever machine github has available
+  # MacOS build, aarch64
   release_macos:
     runs-on: macos-latest
 
     needs: vendor_sources
 
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+          - target: x86_64-apple-darwin
+
     env:
-      CARGO_BUILD_TARGET: aarch64-apple-darwin
+      CARGO_BUILD_TARGET: ${{ matrix.target }}
       CARGO_NET_OFFLINE: "true"
       CARGO_INSTALL_ROOT: "install/"
       RUSTFLAGS: '-C strip=symbols'
       samedec_exe: 'install/bin/samedec'
-      samedec_target_exe: install/bin/samedec-aarch64-apple-darwin
+      samedec_target_exe: install/bin/samedec-${{ matrix.target }}
 
     steps:
     - uses: actions/checkout@v3
@@ -254,6 +260,7 @@ jobs:
     - name: Build
       run: |
         mkdir -p 'install' &&
+        rustup target add "$CARGO_BUILD_TARGET" &&
         cargo fetch --locked &&
         cargo build --offline --tests --frozen --release --workspace
 

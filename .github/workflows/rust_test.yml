@@ -165,9 +165,14 @@ jobs:
     - name: Run integration tests
       shell: bash
       run: |
-        pushd sample
-        ./test.sh
-        popd
+        pushd sample && ./test.sh && popd
+
+    - name: Cross-compile macOS target for x86_64 (apple only)
+      shell: bash
+      if: ${{ matrix.os == 'macos-latest' }}
+      run: |
+        rustup target add x86_64-apple-darwin && \
+        cargo test --frozen -p samedec --verbose --target=x86_64-apple-darwin
 
   # Linux builds within our containerized release environment
   test_samedec_containerized:
