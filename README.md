@@ -52,6 +52,7 @@ platforms, including:
 * `i686-unknown-linux-gnu`
 * `x86_64-pc-windows-msvc`
 * `x86_64-unknown-linux-gnu`
+* `x86_64-apple-darwin`
 
 GNU/Linux binaries are currently built for glibc 2.28 and should be
 portable to most distros.
