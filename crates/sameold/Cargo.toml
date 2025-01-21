@@ -1,6 +1,6 @@
 [package]
 name = "sameold"
-rust-version = "1.65"
+rust-version = "1.70"
 description = "A SAME/EAS digital receiver library"
 version = "0.4.0"
 authors = ["Colin S <3526918+cbs228@users.noreply.github.com>"]
@@ -12,19 +12,19 @@ readme = "README.md"
 
 [dependencies]
 arrayvec = "^0.7.1"
-arraydeque = "^0.4.5"
+arraydeque = "^0.5"
 assert_approx_eq = "1.1.0"
 lazy_static = "^1.4.0"
 log = "0.4"
 nalgebra = "^0.33.2"
-num-complex = "^0.3.1"
+num-complex = "^0.4"
 num-traits = "^0.2"
 phf = {version = "^0.11", features = ["macros"]}
 regex = "^1.5.5"
 slice-ring-buffer = "^0.3"
 strum = "^0.26"
 strum_macros = "^0.26"
-thiserror = "^1.0"
+thiserror = "^2.0"
 
 [dependencies.chrono]
 version = "^0.4"

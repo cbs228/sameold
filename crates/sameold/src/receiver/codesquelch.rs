@@ -142,10 +142,10 @@ pub struct CodeAndPowerSquelch {
     power_track: PowerTracker,
 
     // sample history
-    sample_history: ArrayDeque<[f32; 64], arraydeque::Wrapping>,
+    sample_history: ArrayDeque<f32, 64, arraydeque::Wrapping>,
 
     // power threshold history
-    power_history: ArrayDeque<[bool; 32], arraydeque::Wrapping>,
+    power_history: ArrayDeque<bool, 32, arraydeque::Wrapping>,
 
     // lifetime total count of symbols received
     symbol_counter: u64,
