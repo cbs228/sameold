@@ -4,8 +4,11 @@
 
 FROM ghcr.io/cbs228/sameold/builder/rust:latest
 
-RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
+ARG SOURCE_DATE_EPOCH
+
+RUN --mount=target=/var/lib/apt,type=cache,sharing=locked \
     --mount=target=/var/cache/apt,type=cache,sharing=locked \
+    --mount=destination=/var/log,type=tmpfs \
     [ "$(dpkg --print-architecture)" != amd64 ] || exit 0; \
     set -eux; \
     apt-get update; \
@@ -14,7 +17,8 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
         gcc-x86-64-linux-gnu \
         libc6-dev-amd64-cross \
         libc6:amd64 \
-    ;
+    ; \
+    rm -f -- /etc/machine-id /var/cache/ldconfig/aux-cache
 
 ARG RUST_TARGET="x86_64-unknown-linux-gnu"
 

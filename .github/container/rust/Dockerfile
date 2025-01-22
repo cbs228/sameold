@@ -4,6 +4,8 @@
 
 FROM ghcr.io/cbs228/sameold/builder/base:latest
 
+ARG SOURCE_DATE_EPOCH
+
 # Install rustup and platform-native target
 #
 #    RUST_VERSIONS: list of version numbers or strings
@@ -52,6 +54,6 @@ RUN set -eux; \
     (umask 022 && echo "$RUSTUP_ARCH" >/etc/rust-native-arch)
 
 # Install scripts
-COPY rootfiles/ /
+COPY rootfiles /
 
 LABEL org.opencontainers.image.description="A pinned Rust toolchain with rustup."

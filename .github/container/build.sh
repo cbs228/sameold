@@ -4,11 +4,12 @@
 #
 # run with --push to push the images.
 
-now="$(date -u +'%Y-%m-%d')"
+# set to disable cache
+NO_CACHE="${NO_CACHE:-}"
 
+DEBIAN_TAG="buster-20240612-slim"
 CONTAINER_PREFIX="ghcr.io/cbs228"
 CONTAINER_FQNAME="${CONTAINER_PREFIX}/sameold/builder/%s"
-CONTAINER_TAGS=("$now" "latest")
 
 RUST_VERSIONS=("1.84.0")
 
@@ -58,6 +59,28 @@ container_name() {
 
   #shellcheck disable=SC2059
   printf "$CONTAINER_FQNAME" "$1"
+}
+
+buildcontainer() {
+  # Usage: buildcontainer ARGS
+  #
+  # Run the $BUILDER to build a container image. Some standardized
+  # arguments are passed to every build.
+
+  if [[ $BUILDER =~ podman$ ]]; then
+    run "$BUILDER" build \
+      --build-arg SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" \
+      --timestamp "$SOURCE_DATE_EPOCH" \
+      ${NO_CACHE:+--no-cache} \
+      "$@"
+  else
+    # docker mode; 100% untested
+    run "$BUILDER" buildx build \
+      --build-arg SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" \
+			--output type=docker,rewrite-timestamp=true \
+      ${NO_CACHE:+--no-cache} \
+      "$@"
+  fi
 }
 
 tagall() {
@@ -115,54 +138,59 @@ while true; do
 done
 
 BUILDER="$(container_builder)"
-selfdir="$(dirname "${0?}")"
+selfdir="$(dirname "$(realpath -e "${0?}")")"
+
+# set SOURCE_DATE_EPOCH if possible
+SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --pretty=%ct -- "$selfdir" || date +%s)}"
+export SOURCE_DATE_EPOCH
+
+# tag with "latest" and SOURCE_DATE_EPOCH
+CONTAINER_TAGS=("latest" "$(date --date '@'"$SOURCE_DATE_EPOCH" +'%Y-%m-%d')")
 
 # build the base image
 base_tag="$(container_name base):${CONTAINER_TAGS[0]}"
 
-run "$BUILDER" build \
-  -f "${selfdir?}/Dockerfile.base" \
+buildcontainer \
+  --build-arg DEBIAN_TAG="$DEBIAN_TAG" \
   --tag "$base_tag" \
-  "${selfdir?}"
+  "${selfdir?}/base"
 
 # add rust to the base image
 rust_tag="$(container_name rust):${CONTAINER_TAGS[0]}"
 
-run "$BUILDER" build \
-  -f "${selfdir?}/Dockerfile.rust" \
+buildcontainer \
   --from "$base_tag" \
   --build-arg RUST_VERSIONS="${RUST_VERSIONS[*]}" \
   --tag "$rust_tag" \
-  "${selfdir?}"
+  "${selfdir?}/rust"
 
 # build architecture-specific images
-for containerfile in "${selfdir}/"Dockerfile.rust.*; do
-  platform_triple="${containerfile##*.}"
+for containerdir in "${selfdir?}/"*-*-*; do
+  [ -d "$containerdir" ] || continue
+
+  platform_triple="$(basename ${containerdir})"
   cur_tag="$(container_name "$platform_triple"):${CONTAINER_TAGS[0]}"
 
-  run "$BUILDER" build \
+  buildcontainer \
     --from "$rust_tag" \
-    -f "${containerfile}" \
     --tag "${cur_tag}" \
-    "${selfdir?}"
+    "${containerdir}"
 done
 
 # if all builds succeed, apply remaining tags...
 tagall base "${CONTAINER_TAGS[@]}"
 tagall rust "${CONTAINER_TAGS[@]}"
-for containerfile in "${selfdir}/"Dockerfile.rust.*; do
-  platform_triple="${containerfile##*.}"
+for containerdir in "${selfdir?}/"*-*-*; do
+  [ -d "$containerdir" ] || continue
 
-  tagall "$platform_triple" "${CONTAINER_TAGS[@]}"
+  tagall "$(basename "$containerdir")" "${CONTAINER_TAGS[@]}"
 done
 
 [ -n "${push_images:-}" ] || exit 0
 
 # ... and push
-pushall base "${CONTAINER_TAGS[@]}"
-pushall rust "${CONTAINER_TAGS[@]}"
-for containerfile in "${selfdir}/"Dockerfile.rust.*; do
-  platform_triple="${containerfile##*.}"
+for containerdir in "${selfdir?}/"*; do
+  [ -d "$containerdir" ] || continue
 
-  pushall "$platform_triple" "${CONTAINER_TAGS[@]}"
+  pushall "$(basename "$containerdir")" "${CONTAINER_TAGS[@]}"
 done
