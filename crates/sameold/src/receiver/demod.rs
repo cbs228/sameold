@@ -41,20 +41,23 @@ pub trait Demod: Clone + std::fmt::Debug + Sized {
     /// Push samples into the demodulator
     ///
     /// Appends a fresh slice of `input` samples to the
-    /// demodulator's history.
+    /// demodulator's history. This method does not perform any
+    /// demodulation. If you want to demodulate these samples,
+    /// you must also invoke [`demod()`](Demod::demod).
     ///
     /// In the ideal case, `input` consists of modulated
     /// samples of exactly one symbol, which is fully aligned
     /// to the sending system's *symbol clock*. If you can
-    /// achieve this, it suffices to demodulate exactly one
-    /// sample per symbol. (This is unrealistic)
+    /// achieve this, it suffices to [`demod()`](Demod::demod)
+    /// exactly one sample per symbol. This is unrealistic.
     ///
-    /// You can also feed each sample to `push()` individually
+    /// You can also feed every sample to `push()` individually
     /// and [`demod()`](#method.demod) each one. This is
     /// wasteful, but you can do it.
     ///
     /// A typical solution will use a timing error detector and
     /// demodulate two or three samples per symbol.
+    #[allow(dead_code)]
     fn push<S>(&mut self, input: S)
     where
         S: AsRef<[f32]>;

@@ -6,29 +6,24 @@
 #     ./test.sh
 #
 # By default, this will build and run a debug-mode samedec
-# with cargo. You may also set SAMEDEC to the path to an
-# existing executable.
+# with cargo. If you want to run an installed samedec binary,
+# instead invoke it as:
+#
+#     ./test.sh path/to/samedec
 #
 # The integration tests ensure that samedec's child process
 # spawning and environment variable assignment works.
 
 set -eu
 
-if [ -z "${SAMEDEC:-}" ]; then
-  SAMEDEC="cargo"
-  ARGS="run -q -p samedec --"
-else
-  ARGS=""
-fi
-
 run_samedec() {
-  # Usage: run_samedec FILE
+  # Usage: run_samedec FILE ARGS
   # Runs `samedec` on given input file stem
 
   infile="$1"
+  shift
 
-  #shellcheck disable=SC2086
-  "$SAMEDEC" $ARGS \
+  "$@" \
     --rate 22050 \
     --file "${infile}.bin" \
     -- \
@@ -36,12 +31,19 @@ run_samedec() {
     "${infile}.sh"
 }
 
+if [ "$#" -lt 1 ]; then
+  exec "$0" cargo run -q -p samedec --
+fi
+
+exe="${0?no executable path}"
+cd "$(dirname "$exe")"
+
 for file in $(basename -s .bin -- *.s16le.bin); do
   [ -e "${file}.bin" ] || exit 1
 
   printf '[%s]\n' "$file"
 
-  output="$(run_samedec "$file")"
+  output="$(run_samedec "$file" "$@")"
   expect="$(cat "${file}.txt")"
 
   echo "$output"

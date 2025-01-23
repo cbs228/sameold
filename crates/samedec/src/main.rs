@@ -102,15 +102,15 @@ or similar into this program."
 #[cfg(not(target_os = "windows"))]
 fn is_terminal<S>(stream: &S) -> bool
 where
-    S: std::os::fd::AsRawFd,
+    S: std::os::fd::AsFd,
 {
-    terminal_size::terminal_size_using_fd(stream.as_raw_fd()).is_some()
+    terminal_size::terminal_size_of(stream).is_some()
 }
 
 #[cfg(target_os = "windows")]
 fn is_terminal<S>(stream: &S) -> bool
 where
-    S: std::os::windows::io::AsRawHandle,
+    S: std::os::windows::io::AsHandle,
 {
-    terminal_size::terminal_size_using_handle(stream.as_raw_handle()).is_some()
+    terminal_size::terminal_size_of(stream).is_some()
 }

@@ -247,7 +247,7 @@ impl TimingLoop {
 /// Zero-crossing timing error detector
 #[derive(Clone, Debug)]
 pub struct ZeroCrossingTed {
-    history: ArrayDeque<[f32; 3], arraydeque::Wrapping>,
+    history: ArrayDeque<f32, 3, arraydeque::Wrapping>,
     sample_counter: u32,
 }
 

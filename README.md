@@ -44,13 +44,28 @@ alerts.
 
 Binary builds are available on the
 [releases](https://github.com/cbs228/sameold/releases) page for a variety of
-platforms. Linux binaries are currently built against glibc 2.28 and should be
+platforms, including:
+
+* `aarch64-apple-darwin`
+* `aarch64-unknown-linux-gnu`
+* `armv7-unknown-linux-gnueabihf`
+* `i686-unknown-linux-gnu`
+* `x86_64-pc-windows-msvc`
+* `x86_64-unknown-linux-gnu`
+* `x86_64-apple-darwin`
+
+GNU/Linux binaries are currently built for glibc 2.28 and should be
 portable to most distros.
 
 ### Building
 
 You will need a working
 [rust toolchain](https://www.rust-lang.org/learn/get-started).
+
+```bash
+cargo install samedec
+samedec --help
+```
 
 To build and install binaries from this repository, run
 
