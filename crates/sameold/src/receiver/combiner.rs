@@ -13,7 +13,7 @@ use std::println as debug;
 use arrayvec::ArrayVec;
 
 use super::assembler::Burst;
-use crate::message::{Message, MessageResult};
+use crate::{Message, MessageResult};
 
 /// Convert bursts into a fully-parsed SAME message
 ///

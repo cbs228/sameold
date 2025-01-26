@@ -54,7 +54,7 @@ use log::debug;
 #[cfg(test)]
 use std::println as debug;
 
-use crate::message::{Message, MessageResult};
+use crate::{Message, MessageResult};
 
 use super::combiner;
 use super::output::TransportState;

@@ -92,10 +92,10 @@
 //! | 3           | Error correction (bit voting)      |
 //!
 //! SAME messages are always transmitted three times, in separate "bursts," for
-//! redundancy. When decoding the start of message *headers* (`ZCZC`), `samedec`
+//! redundancy. When decoding the start of message *headers* (`ZCZC`), `sameold`
 //! will use all three bursts together to improve decoding—if possible.
 //!
-//! If one retransmission is missed, `samedec` will automatically fall back to
+//! If one retransmission is missed, `sameold` will automatically fall back to
 //! decoding with only two bursts. The decoder imposes a delay of approximately
 //! **1.311 seconds** on all received headers. This delay is not usually
 //! problematic as most SAME messages are prefixed with a Warning Alarm Tone that
@@ -124,6 +124,11 @@
 //! during message decoding.
 //!
 //! ### Interpreting Messages
+//!
+//! > Message decoding and interpretation is provided by the
+//! > [`sameplace`](https://docs.rs/sameplace/latest/sameplace/)
+//! > crate. `sameold` re-exports the `sameplace::Message` API
+//! > for ease-of-use.
 //!
 //! The [`Message`] type marks the start or end of a SAME message. The
 //! actual "message" part of a SAME message is the audio itself, which
@@ -229,14 +234,15 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
-pub mod eventcodes;
-mod message;
 mod receiver;
 
-pub use message::{
+// re-export sameplace's public API
+pub use sameplace::eventcodes;
+pub use sameplace::{
     EventCode, InvalidDateErr, Message, MessageDecodeErr, MessageHeader, MessageResult, Originator,
     Phenomenon, SignificanceLevel,
 };
+
 pub use receiver::{
     EqualizerBuilder, LinkState, SameEventType, SameReceiver, SameReceiverBuilder,
     SameReceiverEvent, TransportState,

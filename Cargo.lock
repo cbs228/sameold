@@ -605,6 +605,7 @@ dependencies = [
  "log",
  "pretty_env_logger",
  "sameold",
+ "sameplace",
  "terminal_size",
 ]
 
@@ -615,18 +616,12 @@ dependencies = [
  "arraydeque",
  "arrayvec",
  "assert_approx_eq",
- "chrono",
- "lazy_static",
  "log",
  "nalgebra",
  "num-complex",
  "num-traits",
- "phf",
- "regex",
+ "sameplace",
  "slice-ring-buffer",
- "strum",
- "strum_macros",
- "thiserror",
 ]
 
 [[package]]

@@ -11,28 +11,18 @@ repository = "https://github.com/cbs228/sameold.git"
 readme = "README.md"
 
 [dependencies]
+sameplace = {path = "../sameplace", version = "^0.1"}
 arrayvec = "^0.7.1"
 arraydeque = "^0.5"
-lazy_static = "^1.4.0"
 log = "0.4"
 nalgebra = "^0.33.2"
 num-complex = "^0.4"
 num-traits = "^0.2"
-phf = {version = "^0.11", features = ["macros"]}
-regex = "^1.5.5"
 slice-ring-buffer = "^0.3"
-strum = "^0.26"
-strum_macros = "^0.26"
-thiserror = "^2.0"
 
 [dev-dependencies]
 assert_approx_eq = "1.1.0"
 
-[dependencies.chrono]
-version = "^0.4"
-default-features = false
-features = ["clock", "std"]
-optional = true
-
 [features]
 default = ["chrono"]
+chrono = ["sameplace/chrono"]
