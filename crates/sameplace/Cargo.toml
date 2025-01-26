@@ -1,0 +1,28 @@
+[package]
+name = "sameplace"
+rust-version = "1.70"
+description = "A SAME/EAS Message Parser"
+version = "0.1.0"
+authors = ["Colin S <3526918+cbs228@users.noreply.github.com>"]
+license = "MIT OR Apache-2.0"
+edition = "2021"
+homepage = "https://github.com/cbs228/sameold"
+repository = "https://github.com/cbs228/sameold.git"
+readme = "README.md"
+
+[dependencies]
+lazy_static = "^1.4.0"
+phf = {version = "^0.11", features = ["macros"]}
+regex = "^1.5.5"
+strum = "^0.26"
+strum_macros = "^0.26"
+thiserror = "^2.0"
+
+[dependencies.chrono]
+version = "^0.4"
+default-features = false
+features = ["clock", "std"]
+optional = true
+
+[features]
+default = ["chrono"]
