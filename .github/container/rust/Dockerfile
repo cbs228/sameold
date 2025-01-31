@@ -51,6 +51,7 @@ RUN set -eux; \
     rustc --version; \
     rustup set auto-self-update disable; \
     echo "$RUST_VERSIONS" | xargs rustup toolchain add --profile minimal; \
+    rustup component add --toolchain "$default_rust" rustfmt; \
     (umask 022 && echo "$RUSTUP_ARCH" >/etc/rust-native-arch)
 
 # Install scripts

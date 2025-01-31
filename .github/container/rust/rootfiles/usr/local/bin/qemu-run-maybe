@@ -14,8 +14,12 @@ if [ ! -x "$program" ]; then
   program="$(command -v "$program")"
 fi
 
+# determine platform-native triple by reading a file we
+# wrote at install time
+NATIVE_ARCH="$(cat /etc/rust-native-arch)"
+
 case "${CARGO_BUILD_TARGET:-}" in
-  ("$(cat /etc/rust-native-arch)")
+  ("${NATIVE_ARCH?no native architecture saved in /etc/rust-native-arch}")
     # the build target is the native architecture
     exec "$program" "$@"
     ;;
@@ -26,7 +30,15 @@ case "${CARGO_BUILD_TARGET:-}" in
     exec qemu-arm -- "$program" "$@"
     ;;
   (i686-unknown-linux-*)
-    exec qemu-i386 -- "$program" "$@"
+    case "$NATIVE_ARCH" in
+      (x86_64-unknown-linux-*)
+        # x86_64 can run i686 without emulation
+        exec "$program" "$@"
+        ;;
+      (*)
+        exec qemu-i386 -- "$program" "$@"
+        ;;
+    esac
     ;;
   (x86_64-unknown-linux-*)
     exec qemu-x86_64 -- "$program" "$@"

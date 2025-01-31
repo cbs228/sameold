@@ -20,6 +20,14 @@ jobs:
   check_and_vendor:
     runs-on: ubuntu-latest
 
+    container:
+      image: ghcr.io/cbs228/sameold/builder/x86_64-unknown-linux-gnu:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      env:
+        CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+
     steps:
     - uses: actions/checkout@v4
       with:
