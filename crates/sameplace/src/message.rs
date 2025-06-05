@@ -401,14 +401,16 @@ impl MessageHeader {
     /// After this time elapses, the message is no longer valid
     /// and should not be relayed or alerted to anymore.
     ///
-    /// This field represents the validity time of the *message*
+    /// This field represents the validity duration of the *message*
     /// and not the expected duration of the severe condition.
-    /// Severe conditions may persist after the message expires!
-    /// (And might be the subject of future messages.)
+    /// **An expired message may still refer to an ongoing hazard** or
+    /// event. Expiration merely indicates that the *message* is no
+    /// longer valid. Clients are encouraged to retain a history of
+    /// alerts and voice message contents.
     ///
     /// The valid duration is relative to the
-    /// [`issue_datetime()`](#method.issue_datetime) and *not* the
-    /// current time.
+    /// [`issue_datetime()`](MessageHeader::issue_datetime) and
+    /// *not* the current time.
     ///
     /// Requires `chrono`.
     #[cfg(feature = "chrono")]
@@ -422,13 +424,16 @@ impl MessageHeader {
     /// Returns the message validity duration or "purge time."
     /// This is a tuple of (`hours`, `minutes`).
     ///
-    /// This field represents the validity time of the *message*
+    /// This field represents the validity duration of the *message*
     /// and not the expected duration of the severe condition.
-    /// Severe conditions may persist after the message expires!
-    /// (And might be the subject of future messages.)
+    /// **An expired message may still refer to an ongoing hazard** or
+    /// event. Expiration merely indicates that the *message* is no
+    /// longer valid. Clients are encouraged to retain a history of
+    /// alerts and voice message contents.
     ///
     /// The valid duration is relative to the
-    /// [`issue_daytime_fields()`](#method.issue_daytime_fields).
+    /// [`issue_datetime()`](MessageHeader::issue_datetime) and
+    /// *not* the current time.
     pub fn valid_duration_fields(&self) -> (u8, u8) {
         let dur_str = &self.message[self.offset_time + Self::OFFSET_FROMPLUS_VALIDTIME
             ..self.offset_time + Self::OFFSET_FROMPLUS_VALIDTIME + 4];
@@ -474,14 +479,15 @@ impl MessageHeader {
     /// Is the message expired?
     ///
     /// Given the current time, determine if this message has
-    /// expired. It is assumed that `now` is within twelve
-    /// hours of the message issuance time. Twelve hours is
-    /// the maximum [`duration`](#method.valid_duration) of a
-    /// SAME message.
+    /// expired. It is assumed that `now` is within ±90 days of
+    /// the message's [issuance time](MessageHeader::issue_datetime).
+    /// The [maximum duration](https://www.weather.gov/nwr/samealertduration)
+    /// of a SAME message is 99.5 hours.
     ///
-    /// An expired message may still refer to an *ongoing hazard*
-    /// or event! Expiration merely indicates that the message
-    /// should not be relayed or alerted to anymore.
+    /// **An expired message may still refer to an ongoing hazard** or
+    /// event. Expiration merely indicates that the *message* is no
+    /// longer valid. Clients are encouraged to retain a history of
+    /// alerts and voice message contents.
     ///
     /// Requires `chrono`.
     #[cfg(feature = "chrono")]
@@ -492,7 +498,7 @@ impl MessageHeader {
         }
     }
 
-    /// Mesage issuance day/time (fields)
+    /// Message issuance day/time (fields)
     ///
     /// Returns the message issue day and time, as the string
     /// `JJJHHMM`,
