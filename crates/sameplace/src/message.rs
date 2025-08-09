@@ -389,17 +389,25 @@ impl MessageHeader {
         self.location_str().split('-')
     }
 
-    /// Message validity duration (Duration)
+    /// Message validity duration (`Duration`)
     ///
-    /// Returns the message validity duration. The message is
-    /// valid until
+    /// Returns the message validity duration or "purge time."
+    /// The duration specifies how long, relative to the
+    /// [issue time](MessageHeader::issue_datetime), that the
+    /// message is valid.
     ///
-    /// ```ignore
-    /// msg.issue_datetime().unwrap() + msg.valid_duration()
-    /// ```
+    /// The Duration is typically:
     ///
-    /// After this time elapses, the message is no longer valid
-    /// and should not be relayed or alerted to anymore.
+    /// * increments of **15 minutes** for Durations of
+    ///   **1 hour** or less
+    ///
+    /// * increments of **30 minutes** for Durations longer
+    ///   than **1 hour**
+    ///
+    /// * no longer than
+    ///   [99.5 hours](https://www.weather.gov/nwr/samealertduration)
+    ///
+    /// but sameplace does not enforce any of these restrictions.
     ///
     /// This field represents the validity duration of the *message*
     /// and not the expected duration of the severe condition.
@@ -423,6 +431,22 @@ impl MessageHeader {
     ///
     /// Returns the message validity duration or "purge time."
     /// This is a tuple of (`hours`, `minutes`).
+    /// The duration specifies how long, relative to the
+    /// [issue time](MessageHeader::issue_datetime), that the
+    /// message is valid.
+    ///
+    /// The duration is typically:
+    ///
+    /// * increments of **15 minutes** for durations of
+    ///   **1 hour** or less
+    ///
+    /// * increments of **30 minutes** for durations longer
+    ///   than **1 hour**
+    ///
+    /// * no longer than
+    ///   [99.5 hours](https://www.weather.gov/nwr/samealertduration)
+    ///
+    /// but sameplace does not enforce any of these restrictions.
     ///
     /// This field represents the validity duration of the *message*
     /// and not the expected duration of the severe condition.
@@ -476,6 +500,49 @@ impl MessageHeader {
         )
     }
 
+    /// Message purge/expiration datetime (UTC)
+    ///
+    /// Compute the datetime that the SAME message should be
+    /// *purged* or discarded. The caller must provide the time
+    /// that the message was `received`.
+    ///
+    /// The returned timestamp is rounded per NWSI 10-1712:
+    ///
+    /// * For [valid durations](MessageHeader::valid_duration) ≤01h00m,
+    ///   the timestamp is rounded to the nearest 15 minutes
+    ///
+    /// * For valid durations greater than an hour, the timestamp is
+    ///   rounded to the nearest 30 minutes
+    ///
+    /// An error is returned if we are unable to calculate
+    /// a valid timestamp. This can happen, for example, if we
+    /// project a message sent on Julian/Ordinal Day 366 into a
+    /// year that is not a leap year.
+    ///
+    /// SAME headers do not include the year of issuance. This makes
+    /// it impossible to calculate the full datetime of issuance—or
+    /// purge, for that matter—without a rough idea of the message's
+    /// true UTC time. It is *unnecessary* for the `received` time
+    /// to be a precision timestamp. As long as the provided value
+    /// is within ±90 days of true UTC, the output time will be
+    /// correct.
+    ///
+    /// This field represents the expiration time of the *message*
+    /// and not the expected duration of the severe condition.
+    /// **An expired message may still refer to an ongoing hazard** or
+    /// event. Expiration merely indicates that the *message* is no
+    /// longer valid. Clients are encouraged to retain a history of
+    /// alerts and voice message contents.
+    ///
+    /// Requires `chrono`.
+    #[cfg(feature = "chrono")]
+    pub fn purge_datetime(
+        &self,
+        received: &DateTime<Utc>,
+    ) -> Result<DateTime<Utc>, InvalidDateErr> {
+        calculate_expire_time(&self.issue_datetime(received)?, &self.valid_duration())
+    }
+
     /// Is the message expired?
     ///
     /// Given the current time, determine if this message has
@@ -492,9 +559,10 @@ impl MessageHeader {
     /// Requires `chrono`.
     #[cfg(feature = "chrono")]
     pub fn is_expired_at(&self, now: &DateTime<Utc>) -> bool {
-        match self.issue_datetime(now) {
-            Ok(issue_ts) => issue_ts + self.valid_duration() < *now,
-            Err(_e) => false,
+        if let Ok(purge) = self.purge_datetime(&now) {
+            purge < *now
+        } else {
+            false
         }
     }
 
@@ -793,6 +861,31 @@ fn calculate_issue_time(
         .ok_or(InvalidDateErr {})
 }
 
+/// Calculate message expiration time
+#[cfg(feature = "chrono")]
+fn calculate_expire_time(
+    issued: &DateTime<Utc>,
+    purge: &Duration,
+) -> Result<DateTime<Utc>, InvalidDateErr> {
+    use chrono::DurationRound;
+
+    const FIFTEEN_MINUTES: Duration = Duration::minutes(15);
+    const THIRTY_MINUTES: Duration = Duration::minutes(30);
+    const ONE_HOUR: Duration = Duration::hours(1);
+
+    issued
+        .checked_add_signed(*purge)
+        .and_then(|purge_unrounded| {
+            if *purge <= ONE_HOUR {
+                purge_unrounded.duration_round(FIFTEEN_MINUTES)
+            } else {
+                purge_unrounded.duration_round(THIRTY_MINUTES)
+            }
+            .ok()
+        })
+        .ok_or(InvalidDateErr {})
+}
+
 // Create the latest-possible Utc date from year, ordinal, and HMS
 #[cfg(feature = "chrono")]
 #[inline]
@@ -869,9 +962,65 @@ mod tests {
         calculate_issue_time((84, 25, 59), (2021, 84)).expect_err("should not succeed");
     }
 
+    #[cfg(feature = "chrono")]
+    #[test]
+    fn test_calculate_expire_time_short() {
+        const FIFTEEN_MINUTES: Duration = Duration::minutes(15);
+
+        let issued = Utc.with_ymd_and_hms(2021, 3, 24, 2, 44, 0).unwrap();
+        assert_eq!(
+            Utc.with_ymd_and_hms(2021, 3, 24, 3, 0, 0).unwrap(),
+            calculate_expire_time(&issued, &FIFTEEN_MINUTES).unwrap()
+        );
+
+        let issued = Utc.with_ymd_and_hms(2021, 3, 24, 2, 46, 0).unwrap();
+        assert_eq!(
+            Utc.with_ymd_and_hms(2021, 3, 24, 3, 0, 0).unwrap(),
+            calculate_expire_time(&issued, &FIFTEEN_MINUTES).unwrap()
+        );
+
+        let issued = Utc.with_ymd_and_hms(2021, 3, 24, 2, 55, 0).unwrap();
+        assert_eq!(
+            Utc.with_ymd_and_hms(2021, 3, 24, 3, 15, 0).unwrap(),
+            calculate_expire_time(&issued, &FIFTEEN_MINUTES).unwrap()
+        );
+
+        let issued = Utc.with_ymd_and_hms(2021, 3, 24, 3, 00, 0).unwrap();
+        assert_eq!(
+            Utc.with_ymd_and_hms(2021, 3, 24, 3, 15, 0).unwrap(),
+            calculate_expire_time(&issued, &FIFTEEN_MINUTES).unwrap()
+        );
+    }
+
+    #[cfg(feature = "chrono")]
+    #[test]
+    fn test_calculate_expire_time_long() {
+        let issued = Utc.with_ymd_and_hms(2021, 3, 24, 2, 53, 0).unwrap();
+
+        assert_eq!(
+            Utc.with_ymd_and_hms(2021, 3, 24, 3, 15, 0).unwrap(),
+            calculate_expire_time(&issued, &Duration::minutes(15)).unwrap()
+        );
+
+        assert_eq!(
+            Utc.with_ymd_and_hms(2021, 3, 24, 3, 30, 0).unwrap(),
+            calculate_expire_time(&issued, &Duration::minutes(30)).unwrap()
+        );
+
+        assert_eq!(
+            Utc.with_ymd_and_hms(2021, 3, 24, 3, 45, 0).unwrap(),
+            calculate_expire_time(&issued, &Duration::minutes(45)).unwrap()
+        );
+
+        assert_eq!(
+            Utc.with_ymd_and_hms(2021, 3, 24, 4, 00, 0).unwrap(),
+            calculate_expire_time(&issued, &Duration::minutes(60)).unwrap()
+        );
+    }
+
     #[test]
     fn test_message_header() {
-        const THREE_LOCATIONS: &str = "ZCZC-WXR-RWT-012345-567890-888990+0351-3662322-NOCALL00-@@@";
+        const THREE_LOCATIONS: &str = "ZCZC-WXR-RWT-012345-567890-888990+0330-3662322-NOCALL00-@@@";
 
         let mut errs = vec![0u8; THREE_LOCATIONS.len()];
         errs[0] = 1u8;
@@ -891,7 +1040,7 @@ mod tests {
         assert_eq!(Originator::NationalWeatherService, msg.originator());
         assert_eq!(msg.event_str(), "RWT");
         assert_eq!(msg.event().phenomenon(), Phenomenon::RequiredWeeklyTest);
-        assert_eq!(msg.valid_duration_fields(), (3, 51));
+        assert_eq!(msg.valid_duration_fields(), (3, 30));
         assert_eq!(msg.issue_daytime_fields(), (366, 23, 22));
         assert_eq!(msg.callsign(), "NOCALL00");
         assert_eq!(msg.parity_error_count(), 6);
@@ -904,19 +1053,25 @@ mod tests {
         // time API checks
         #[cfg(feature = "chrono")]
         {
+            // mock system time that the message was received
+            let received = Utc.with_ymd_and_hms(2020, 12, 31, 11, 30, 34).unwrap();
+
             assert_eq!(
                 Utc.with_ymd_and_hms(2020, 12, 31, 23, 22, 00).unwrap(),
-                msg.issue_datetime(&Utc.with_ymd_and_hms(2020, 12, 31, 11, 30, 34).unwrap())
-                    .unwrap()
+                msg.issue_datetime(&received).unwrap()
             );
             assert_eq!(
                 msg.valid_duration(),
-                Duration::hours(3) + Duration::minutes(51)
+                Duration::hours(3) + Duration::minutes(30)
+            );
+            assert_eq!(
+                Utc.with_ymd_and_hms(2021, 1, 1, 3, 0, 00).unwrap(),
+                msg.purge_datetime(&received).unwrap()
             );
             assert!(!msg.is_expired_at(&Utc.with_ymd_and_hms(2020, 12, 31, 23, 59, 0).unwrap()));
             assert!(!msg.is_expired_at(&Utc.with_ymd_and_hms(2021, 1, 1, 1, 20, 30).unwrap()));
-            assert!(!msg.is_expired_at(&Utc.with_ymd_and_hms(2021, 1, 1, 3, 13, 00).unwrap()));
-            assert!(msg.is_expired_at(&Utc.with_ymd_and_hms(2021, 1, 1, 3, 13, 01).unwrap()));
+            assert!(!msg.is_expired_at(&Utc.with_ymd_and_hms(2021, 1, 1, 2, 59, 59).unwrap()));
+            assert!(msg.is_expired_at(&Utc.with_ymd_and_hms(2021, 1, 1, 3, 0, 01).unwrap()));
         }
 
         // try again via Message
