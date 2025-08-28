@@ -85,18 +85,12 @@ where
     /// Creates FIR filter coefficients with the specified impulse
     /// response `h`. The coefficients `h` use the same representation
     /// as GNU Octave's `filter()` function.
-    ///
-    /// Internally, the coefficients are stored reversed. This improves
-    /// performance against most types of queues for the input signal.
     pub fn from_slice<S>(h: S) -> Self
     where
         S: AsRef<[T]>,
     {
         let inp = h.as_ref();
-        FilterCoeff(DVector::from_iterator(
-            inp.len(),
-            inp.iter().rev().map(|d| *d),
-        ))
+        FilterCoeff(DVector::from_iterator(inp.len(), inp.iter().copied()))
     }
 
     /// Create an identity filter
@@ -107,7 +101,7 @@ where
             len,
             std::iter::repeat(T::zero()).take(len),
         ));
-        out.0[len - 1] = T::one();
+        out.0[0] = T::one();
         out
     }
 
@@ -143,42 +137,31 @@ where
     /// The filter coefficients are reset to a "no-op" identity
     /// filter.
     pub fn identity(&mut self) {
-        let len = self.0.len();
         for coeff in self.0.iter_mut() {
             *coeff = T::zero();
         }
-        self.0[len - 1] = T::one();
+        self.0[0] = T::one();
     }
 
     /// Return filter coefficients as slice
-    ///
-    /// The filter coefficients are in *reverse* order
-    /// from their Octave representation.
     #[inline]
     pub fn as_slice(&self) -> &[T] {
         self.0.as_slice()
     }
 
     /// Return filter coefficients as mutable slice
-    ///
-    /// The filter coefficients are in *reverse* order
-    /// from their Octave representation.
     #[inline]
     pub fn as_mut_slice(&mut self) -> &mut [T] {
         self.0.as_mut_slice()
     }
 
     /// Obtain filter coefficients
-    ///
-    /// The coefficients are output in reverse order.
     #[inline]
     pub fn inner(&self) -> &DVector<T> {
         &self.0
     }
 
     /// Obtain filter coefficients (mutable)
-    ///
-    /// The coefficients are output in reverse order.
     #[inline]
     pub fn inner_mut(&mut self) -> &mut DVector<T> {
         &mut self.0
@@ -372,11 +355,11 @@ where
 // `history` contains the sample history. The most recent sample
 // is stored in `history[N-1]`, and the least recent sample in the
 // history is stored in `history[0]`. The filter coefficients are
-// stored *reversed* in `rev_coeff`, with `rev_coeff[N-1]` being
-// the zeroth filter coefficient.
+// stored in `coeff`, with `coeff[0]` being the zeroth filter
+// coefficient.
 //
 // The two inputs need not be the same length. If `history` is shorter
-// than `rev_coeff`, then the sample history is assumed to be zero
+// than `coeff`, then the sample history is assumed to be zero
 // outside of its range.
 //
 // To perform FIR filtering, new samples are shifted onto the end of
@@ -385,7 +368,7 @@ where
 //
 // The output value is returned. Any compatible arithmetic types may
 // be used, including complex numbers.
-fn multiply_accumulate<W, In, Coeff, Out>(history: W, rev_coeff: &[Coeff]) -> Out
+fn multiply_accumulate<W, In, Coeff, Out>(history: W, coeff: &[Coeff]) -> Out
 where
     W: IntoIterator<Item = In>,
     W::IntoIter: DoubleEndedIterator,
@@ -395,7 +378,7 @@ where
 {
     let history = history.into_iter();
     let mut out = Out::zero();
-    for (hi, co) in history.rev().zip(rev_coeff.iter().rev()) {
+    for (hi, co) in history.rev().zip(coeff.iter()) {
         out += hi * *co;
     }
     out
@@ -418,11 +401,11 @@ mod tests {
         // simple multiplies; we clip to the end
         let out = multiply_accumulate(&[20.0f32, 1.0f32], &[1.0f32]);
         assert_eq!(1.0f32, out);
-        let out = multiply_accumulate(&[1.0f32], &[20.0f32, 1.0f32]);
+        let out = multiply_accumulate(&[1.0f32], &[1.0f32, 20.0f32]);
         assert_eq!(1.0f32, out);
 
         // more complicated multiply
-        let out = multiply_accumulate(&[20.0f32, 20.0f32], &[-1.0f32, 1.0f32]);
+        let out = multiply_accumulate(&[20.0f32, 20.0f32], &[1.0f32, -1.0f32]);
         assert_approx_eq!(0.0f32, out);
     }
 
@@ -442,13 +425,13 @@ mod tests {
 
     #[test]
     fn test_filter_identity() {
-        const EXPECT: &[f32] = &[0.0f32, 0.0f32, 0.0f32, 1.0f32];
+        const EXPECT: &[f32] = &[1.0f32, 0.0f32, 0.0f32, 0.0f32];
 
         let mut filter = FilterCoeff::<f32>::from_identity(4);
         assert_eq!(EXPECT, filter.as_ref());
         assert_eq!(10.0f32, filter.filter(&[10.0f32]));
 
-        filter[2] = 5.0f32;
+        filter[3] = 5.0f32;
         filter.identity();
         assert_eq!(EXPECT, filter.as_ref());
     }

@@ -358,7 +358,7 @@ where
 {
     let window = window.into_iter();
     let gain = nlms_gain(relaxation, regularization, window.clone());
-    for (coeff, data) in filter.iter_mut().zip(window) {
+    for (coeff, data) in filter.iter_mut().zip(window.rev()) {
         *coeff += gain * error * data;
     }
 }
