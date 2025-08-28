@@ -116,25 +116,26 @@ where
         self.0.len()
     }
 
-    /// Perform FIR filtering with the given sample history slice
+    /// Perform FIR filtering with the given sample history
     ///
     /// Computes the current output sample of the filter assuming
-    /// the given `history`. `history` should be a slice where
-    /// `history[N-1]` is the most recent sample and `history[0]`
-    /// is the least recent/oldest sample.
+    /// the given `history`. `history` must be a
+    /// `DoubledEndedIterator` which outputs the oldest sample
+    /// first and the newest sample last. The newest sample is
+    /// used for feedforward lag 0. `history` SHOULD contain at
+    /// least `self.len()` samples, but no error is raised if it
+    /// is shorter.
     ///
-    /// The caller should maintain a deque of history. New samples
-    /// should be pushed to the end of the queue, and old samples
-    /// should age off the head of the queue. The queue *should*
-    /// contain `self.len()` samples, but it is not an error if
-    /// it contains more or less.
-    pub fn filter<I, In, Out>(&self, history: I) -> Out
+    /// The caller is encouraged to use a deque for `history`,
+    /// but this is not enforced.
+    pub fn filter<W, In, Out>(&self, history: W) -> Out
     where
-        I: AsRef<[In]>,
+        W: IntoIterator<Item = In>,
+        W::IntoIter: DoubleEndedIterator,
         In: Copy + Scalar + std::ops::Mul<T, Output = Out>,
         Out: Copy + Scalar + Zero + std::ops::AddAssign,
     {
-        multiply_accumulate(history.as_ref(), self.as_ref())
+        multiply_accumulate(history, self.as_ref())
     }
 
     /// Reset to identity filter
@@ -275,7 +276,7 @@ where
     ///
     /// Appends the `input` slice to the right side of the Window.
     /// The last sample of `input` becomes the right-most / most recent
-    /// sample of the Window slice.
+    /// sample of the Window.
     ///
     /// If the length of `input` exceeds the length of the Window,
     /// then the right-most chunk of `input` will be taken.
@@ -301,8 +302,8 @@ where
     /// Append a scalar to the sample window
     ///
     /// Appends the `input` scalar to the right side of the Window.
-    /// It becomes the last / most recent sample of the Window
-    /// slice. Returns the sample that was formerly the oldest
+    /// It becomes the last / most recent sample of Window.
+    /// Returns the sample that was formerly the oldest
     /// sample in the Window.
     #[inline]
     pub fn push_scalar(&mut self, input: T) -> T {
@@ -311,19 +312,26 @@ where
         out
     }
 
+    /// Iterator over window contents
+    ///
+    /// The iterator outputs the least recent sample first.
+    /// The most recent sample is output last.
+    pub fn iter(&self) -> <&Window<T> as IntoIterator>::IntoIter {
+        self.into_iter()
+    }
+
+    /// Convert window contents to a vector
+    ///
+    /// Copy the current contents of the window to a freshly-allocated
+    /// vector. Vector elements are ordered from least recent sample
+    /// to most recent sample.
+    pub fn to_vec(&self) -> Vec<T> {
+        self.iter().collect()
+    }
+
     /// Obtain the inner SliceRingBuffer
     pub fn inner(&self) -> &SliceRingBuffer<T> {
         &self.0
-    }
-
-    /// Obtain current window contents, as a slice
-    ///
-    /// The zeroth sample of the slice is the least recent
-    /// sample in the window. The last sample of the slice
-    /// is the most recent sample in the window.
-    #[inline]
-    pub fn as_slice(&self) -> &[T] {
-        self.0.as_slice()
     }
 
     /// Most recent element pushed into the Window
@@ -339,12 +347,16 @@ where
     }
 }
 
-impl<T> AsRef<[T]> for Window<T>
+impl<'a, T> IntoIterator for &'a Window<T>
 where
     T: Copy + Scalar + Zero,
 {
-    fn as_ref(&self) -> &[T] {
-        self.as_slice()
+    type Item = T;
+
+    type IntoIter = std::iter::Copied<core::slice::Iter<'a, T>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.as_slice().into_iter().copied()
     }
 }
 
@@ -363,7 +375,7 @@ where
 // stored *reversed* in `rev_coeff`, with `rev_coeff[N-1]` being
 // the zeroth filter coefficient.
 //
-// The two slices need not be the same length. If `history` is shorter
+// The two inputs need not be the same length. If `history` is shorter
 // than `rev_coeff`, then the sample history is assumed to be zero
 // outside of its range.
 //
@@ -373,19 +385,18 @@ where
 //
 // The output value is returned. Any compatible arithmetic types may
 // be used, including complex numbers.
-fn multiply_accumulate<In, Coeff, Out>(history: &[In], rev_coeff: &[Coeff]) -> Out
+fn multiply_accumulate<W, In, Coeff, Out>(history: W, rev_coeff: &[Coeff]) -> Out
 where
+    W: IntoIterator<Item = In>,
+    W::IntoIter: DoubleEndedIterator,
     In: Copy + Scalar + std::ops::Mul<Coeff, Output = Out>,
     Coeff: Copy + Scalar,
     Out: Copy + Scalar + Zero + std::ops::AddAssign,
 {
-    let mul_len = usize::min(history.len(), rev_coeff.len());
-    let history = &history[history.len() - mul_len..];
-    let rev_coeff = &rev_coeff[rev_coeff.len() - mul_len..];
-
+    let history = history.into_iter();
     let mut out = Out::zero();
-    for (hi, co) in history.iter().zip(rev_coeff.iter()) {
-        out += *hi * *co;
+    for (hi, co) in history.rev().zip(rev_coeff.iter().rev()) {
+        out += hi * *co;
     }
     out
 }
@@ -446,15 +457,15 @@ mod tests {
     fn test_window() {
         let mut wind: Window<f32> = Window::new(4);
         assert_eq!(4, wind.len());
-        assert_eq!(&[0.0f32, 0.0f32, 0.0f32, 0.0f32], wind.as_slice());
+        assert_eq!(vec![0.0f32, 0.0f32, 0.0f32, 0.0f32], wind.to_vec());
         wind.push(&[1.0f32]);
-        assert_eq!(&[0.0f32, 0.0f32, 0.0f32, 1.0f32], wind.as_slice());
+        assert_eq!(vec![0.0f32, 0.0f32, 0.0f32, 1.0f32], wind.to_vec());
 
         wind.push(&[2.0f32]);
-        assert_eq!(&[0.0f32, 0.0f32, 1.0f32, 2.0f32], wind.as_slice());
+        assert_eq!(vec![0.0f32, 0.0f32, 1.0f32, 2.0f32], wind.to_vec());
 
         wind.push(&[-1.0f32, -2.0f32, 1.0f32, 2.0f32, 3.0f32, 4.0f32]);
-        assert_eq!(&[1.0f32, 2.0f32, 3.0f32, 4.0f32], wind.as_slice());
+        assert_eq!(vec![1.0f32, 2.0f32, 3.0f32, 4.0f32], wind.to_vec());
         assert_eq!(4.0f32, wind.back());
         assert_eq!(1.0f32, wind.front());
         assert_eq!(4, wind.len());
@@ -462,10 +473,10 @@ mod tests {
         // push individual samples works too
         assert_eq!(1.0f32, wind.push_scalar(10.0f32));
         assert_eq!(4, wind.len());
-        assert_eq!(&[2.0f32, 3.0f32, 4.0f32, 10.0f32], wind.as_slice());
+        assert_eq!(vec![2.0f32, 3.0f32, 4.0f32, 10.0f32], wind.to_vec());
 
         wind.reset();
         assert_eq!(4, wind.len());
-        assert_eq!(&[0.0f32, 0.0f32, 0.0f32, 0.0f32], wind.as_slice());
+        assert_eq!(vec![0.0f32, 0.0f32, 0.0f32, 0.0f32], wind.to_vec());
     }
 }
