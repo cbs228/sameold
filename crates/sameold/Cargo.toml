@@ -18,7 +18,6 @@ log = "0.4"
 nalgebra = "^0.33.2"
 num-complex = "^0.4"
 num-traits = "^0.2"
-slice-ring-buffer = "^0.3"
 
 [dev-dependencies]
 assert_approx_eq = "1.1.0"

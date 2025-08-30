@@ -62,12 +62,12 @@
 //! wind.push(&[1.0f32, 2.0f32, 3.0f32, 4.0f32]);
 //! ```
 
+use std::collections::VecDeque;
 use std::convert::AsRef;
 
 use nalgebra::base::Scalar;
 use nalgebra::DVector;
 use num_traits::{One, Zero};
-use slice_ring_buffer::SliceRingBuffer;
 
 /// FIR filter coefficients
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq)]
@@ -215,7 +215,7 @@ where
 /// Implements a fixed-size lookback window for FIR filters
 /// or other purposes.
 #[derive(Clone, Debug)]
-pub struct Window<T>(SliceRingBuffer<T>)
+pub struct Window<T>(VecDeque<T>)
 where
     T: Copy + Scalar + Zero;
 
@@ -226,27 +226,19 @@ where
 {
     /// Create empty window, filling it with zeros
     ///
-    /// Creates a new `Window` with the given `len`gth, with
-    /// `len > 0`.
+    /// Creates a new `Window` with the given `len`gth
     pub fn new(len: usize) -> Self {
-        assert!(len > 0);
-
-        let mut out = Self(SliceRingBuffer::with_capacity(len));
-        for _i in 0..len {
-            out.0.push_front(T::zero());
-        }
-        assert_eq!(len, out.0.len());
-        out
+        let mut q = VecDeque::with_capacity(len);
+        q.resize(len, T::zero());
+        Self(q)
     }
 
     /// Reset to zero initial conditions
     ///
     /// Clear the window, filling it with zeros
     pub fn reset(&mut self) {
-        let len = self.0.len();
-        self.0.clear();
-        for _i in 0..len {
-            self.0.push_front(T::zero());
+        for s in &mut self.0 {
+            *s = T::zero()
         }
     }
 
@@ -279,7 +271,7 @@ where
         std::mem::drop(self.0.drain(0..input.len()));
 
         // add new
-        self.0.extend_from_slice(input.as_ref());
+        self.0.extend(input.as_ref());
     }
 
     /// Append a scalar to the sample window
@@ -290,7 +282,7 @@ where
     /// sample in the Window.
     #[inline]
     pub fn push_scalar(&mut self, input: T) -> T {
-        let out = self.0.pop_front().unwrap();
+        let out = self.0.pop_front().unwrap_or(T::zero());
         self.0.push_back(input);
         out
     }
@@ -313,7 +305,7 @@ where
     }
 
     /// Obtain the inner SliceRingBuffer
-    pub fn inner(&self) -> &SliceRingBuffer<T> {
+    pub fn inner(&self) -> &VecDeque<T> {
         &self.0
     }
 
@@ -336,10 +328,10 @@ where
 {
     type Item = T;
 
-    type IntoIter = std::iter::Copied<core::slice::Iter<'a, T>>;
+    type IntoIter = std::iter::Copied<std::collections::vec_deque::Iter<'a, T>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.as_slice().into_iter().copied()
+        self.0.iter().copied()
     }
 }
 
@@ -443,6 +435,8 @@ mod tests {
         assert_eq!(vec![0.0f32, 0.0f32, 0.0f32, 0.0f32], wind.to_vec());
         wind.push(&[1.0f32]);
         assert_eq!(vec![0.0f32, 0.0f32, 0.0f32, 1.0f32], wind.to_vec());
+        wind.push(&[]);
+        assert_eq!(vec![0.0f32, 0.0f32, 0.0f32, 1.0f32], wind.to_vec());
 
         wind.push(&[2.0f32]);
         assert_eq!(vec![0.0f32, 0.0f32, 1.0f32, 2.0f32], wind.to_vec());
@@ -457,6 +451,10 @@ mod tests {
         assert_eq!(1.0f32, wind.push_scalar(10.0f32));
         assert_eq!(4, wind.len());
         assert_eq!(vec![2.0f32, 3.0f32, 4.0f32, 10.0f32], wind.to_vec());
+
+        // exactly enough to fill
+        wind.push(&[5.0f32, 4.0f32, 3.0f32, 2.0f32]);
+        assert_eq!(vec![5.0f32, 4.0f32, 3.0f32, 2.0f32], wind.to_vec());
 
         wind.reset();
         assert_eq!(4, wind.len());
