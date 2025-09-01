@@ -162,6 +162,7 @@ cleanup_exit() {
   trap '' ERR EXIT
 
   # Kill all background jobs
+  #shellcheck disable=SC2046
   kill $(jobs -p) 2>/dev/null || true
   wait
 
