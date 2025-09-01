@@ -13,6 +13,6 @@ exec 0>/dev/null
 [ "$SAMEDEC_IS_NATIONAL" = "Y" ]
 
 lifetime=$(( SAMEDEC_PURGETIME - SAMEDEC_ISSUETIME))
-[ "$lifetime" -eq $(( 30*60 )) ]
+[ "$lifetime" -eq $(( 25*60 )) ]
 
 echo "+OK"

@@ -31,14 +31,15 @@ where
     B: AsRef<OsStr>,
     A: IntoIterator<Item = B>,
 {
-    let (issue_ts, purge_ts) = match header.issue_datetime(&Utc::now()) {
-        Ok(issue_ts) => (
-            time_to_unix_str(issue_ts),
-            time_to_unix_str(issue_ts + header.valid_duration()),
-        ),
-        Err(_e) => ("".to_owned(), "".to_owned()),
-    };
-
+    let now = Utc::now();
+    let issue_ts = header
+        .issue_datetime(&now)
+        .map(|tm| time_to_unix_str(tm))
+        .unwrap_or_default();
+    let purge_ts = header
+        .purge_datetime(&now)
+        .map(|tm| time_to_unix_str(tm))
+        .unwrap_or_default();
     let locations: Vec<&str> = header.location_str_iter().collect();
     let evt = header.event();
 
