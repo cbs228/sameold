@@ -18,13 +18,13 @@ usage() {
 Usage: $0 [--push]
 
 Build container images for the CI environment. To select
-a particular container platform tool like podman, set
+a particular container platform tool like buildah, set
 
-    BUILDER=podman
+    BUILDER=buildah
 
 Prior to pushing, make sure to
 
-    podman login "$CONTAINER_PREFIX"
+    buildah login "$CONTAINER_PREFIX"
 
 or equivalent.
 EOF
@@ -45,7 +45,7 @@ container_builder() {
     command -v "${BUILDER}"
   else
     {
-      command -v podman || \
+      command -v buildah || \
       command -v docker
     } 2>/dev/null || {
       echo >&2 "FATAL: container platform tools not found"
@@ -67,16 +67,17 @@ buildcontainer() {
   # Run the $BUILDER to build a container image. Some standardized
   # arguments are passed to every build.
 
-  if [[ $BUILDER =~ podman$ ]]; then
+  if [[ $BUILDER =~ buildah$ ]]; then
     run "$BUILDER" build \
-      --build-arg SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" \
+      --identity-label=false \
+      --build-arg=SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" \
       --timestamp "$SOURCE_DATE_EPOCH" \
       ${NO_CACHE:+--no-cache} \
       "$@"
   else
     # docker mode; 100% untested
     run "$BUILDER" buildx build \
-      --build-arg SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" \
+      --build-arg=SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" \
 			--output type=docker,rewrite-timestamp=true \
       ${NO_CACHE:+--no-cache} \
       "$@"
@@ -109,7 +110,8 @@ pushall() {
 
   local tag
   for tag in "$@"; do
-    run "$BUILDER" push "${prefix}:${tag}"
+    run "$BUILDER" push --retry 3 "${prefix}:${tag}"
+    sleep 2
   done
 }
 
@@ -154,7 +156,8 @@ CONTAINER_TAGS=("latest" "$(date --date '@'"$SOURCE_DATE_EPOCH" +'%Y-%m-%d')")
 base_tag="$(container_name base):${CONTAINER_TAGS[0]}"
 
 buildcontainer \
-  --build-arg DEBIAN_TAG="$DEBIAN_TAG" \
+  --build-arg=DEBIAN_TAG="$DEBIAN_TAG" \
+  --pull=missing \
   --tag "$base_tag" \
   "${selfdir?}/base"
 
@@ -163,7 +166,8 @@ rust_tag="$(container_name rust):${CONTAINER_TAGS[0]}"
 
 buildcontainer \
   --from "$base_tag" \
-  --build-arg RUST_VERSIONS="${RUST_VERSIONS[*]}" \
+  --pull=false \
+  --build-arg=RUST_VERSIONS="${RUST_VERSIONS[*]}" \
   --tag "$rust_tag" \
   "${selfdir?}/rust"
 
@@ -176,7 +180,8 @@ for containerdir in "${selfdir?}/"*-*-*; do
 
   buildcontainer \
     --from "$rust_tag" \
-    --build-arg SOURCE_REV="$SOURCE_REV" \
+    --pull=false \
+    --build-arg=SOURCE_REV="$SOURCE_REV" \
     --tag "${cur_tag}" \
     "${containerdir}"
 done
