@@ -7,9 +7,6 @@ on:
   pull_request:
     branches: [ "develop" ]
 
-permissions:
-  contents: write
-
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
@@ -153,7 +150,7 @@ jobs:
       run: |
         cargo test --frozen -p sameold --verbose --no-default-features --features "${{ matrix.features }}"
 
-  # Test and release samedec on Linux, via containers
+  # Make release build of samedec for Linux, via containers
   release_samedec_linux:
     runs-on: ubuntu-latest
 
@@ -216,33 +213,6 @@ jobs:
         name: samedec-${{ matrix.target }}
         path: /install/bin/samedec-${{ matrix.target }}
         retention-days: 3
-
-    - name: Upload tagged release (tags only)
-      uses: svenstaro/upload-release-action@v2
-      if: startsWith(github.ref, 'refs/tags/samedec-')
-      with:
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: /install/bin/samedec-${{ matrix.target }}
-        overwrite: true
-
-    - name: Update tag for nightly release (develop-branch only)
-      uses: richardsimko/update-tag@v1
-      if: github.ref == 'refs/heads/develop'
-      with:
-        tag_name: latest
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Upload nightly release (develop-branch only)
-      uses: svenstaro/upload-release-action@v2
-      if: github.ref == 'refs/heads/develop'
-      with:
-        tag: "latest"
-        release_name: "Nightly Release"
-        body: "This is a rolling release built from the latest `develop` branch."
-        prerelease: true
-        file: /install/bin/samedec-${{ matrix.target }}
-        overwrite: true
 
   # MacOS and Windows builds
   release_samedec_nonlinux:
@@ -329,17 +299,33 @@ jobs:
         path: ${{ env.samedec_target_exe }}
         retention-days: 3
 
-    - name: Upload tagged release (tags only)
-      uses: svenstaro/upload-release-action@v2
-      if: startsWith(github.ref, 'refs/tags/samedec-')
+  # Publish nightly builds
+  publish_nightly:
+    runs-on: ubuntu-latest
+
+    if: github.ref == 'refs/heads/develop'
+
+    permissions:
+      contents: write
+
+    needs:
+    - test_sameold
+    - release_samedec_linux
+    - release_samedec_nonlinux
+
+    name: Publish Nightly
+
+    steps:
+
+    - name: Download All Artifacts
+      uses: actions/download-artifact@v5
       with:
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: ${{ env.samedec_target_exe }}
-        overwrite: true
+        path: publish
+        pattern: samedec-*
+        merge-multiple: true
 
     - name: Update tag for nightly release (develop-branch only)
       uses: richardsimko/update-tag@v1
-      if: github.ref == 'refs/heads/develop'
       with:
         tag_name: latest
       env:
@@ -347,11 +333,44 @@ jobs:
 
     - name: Upload nightly release (develop-only)
       uses: svenstaro/upload-release-action@v2
-      if: github.ref == 'refs/heads/develop'
       with:
         tag: "latest"
         release_name: "Nightly Release"
         body: "This is a rolling release built from the latest `develop` branch."
         prerelease: true
-        file: ${{ env.samedec_target_exe }}
+        file_glob: true
+        file: publish/samedec-*
+        overwrite: true
+
+  # Publish tagged release
+  publish_tag:
+    runs-on: ubuntu-latest
+
+    if: startsWith(github.ref, 'refs/tags/samedec-')
+
+    permissions:
+      contents: write
+
+    needs:
+    - test_sameold
+    - release_samedec_linux
+    - release_samedec_nonlinux
+
+    name: Publish Tag
+
+    steps:
+
+    - name: Download All Artifacts
+      uses: actions/download-artifact@v5
+      with:
+        path: publish
+        pattern: samedec-*
+        merge-multiple: true
+
+    - name: Upload tagged release (tags only)
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file_glob: true
+        file: publish/samedec-*
         overwrite: true
