@@ -145,6 +145,7 @@ run_all_images() {
     -v 'sameold-target-{}:/src/target:rw' \
     -v sameold-vendored-sources:/src/vendor:ro \
     -v sameold-cargo-config:/src/.cargo:ro \
+    -v sameold-artifacts:/artifacts:rw \
     "${REGISTRY}"'{}'":$CONTAINER_TAG" \
     "$@" \
     -- \
@@ -155,6 +156,30 @@ run_all_images() {
   echo >&2
   echo >&2 "All targets passed:"
   printf >&2 '  ✔ %s\n'  "${TARGETS[@]}"
+}
+
+copy_artifacts_to() {
+  # Usage: copy_artifacts_to DIR
+  #
+  # Copy all artifacts from the build to the given DIRectory
+  # on the host. The output directory will be created if it
+  # does not exist. Existing files in DIR will be overwritten.
+
+  local dir="${1?missing DIR}"
+  mkdir -p -- "$dir" || return 1
+  dir="$(realpath -e "$dir")" || return 1
+
+  run "$BUILDER" run --rm \
+    --init \
+    --security-opt=label:disable \
+    --userns=keep-id \
+    --user=root \
+    -v sameold-artifacts:/artifacts:ro \
+    -v "$dir":/out:rw \
+    "$DEFAULT_IMAGE" \
+    bash -c 'umask 002 && cp -f -R --archive /artifacts/* /out/' &
+
+  wait -f "$!"
 }
 
 cleanup_exit() {
@@ -185,6 +210,12 @@ DEFAULT_IMAGE="${REGISTRY}${DEFAULT_TARGET}:${CONTAINER_TAG}"
 
 # git version → source date epoch, if possible
 SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --pretty=%ct || date +%s)}"
+
+# git version
+SOURCE_REV="$(git log -1 --pretty=%h --abbrev=13 || echo nogit)"
+
+# where to store artifacts
+ARTIFACTS="${ARTIFACTS:-"./.artifacts"}"
 
 # return if sourced
 (return 0 2>/dev/null) && return 0
@@ -217,6 +248,9 @@ for target in "${TARGETS[@]}"; do
   make_volume sameold-target-"$target" temporary
 done
 
+# make volume for artifacts
+make_volume sameold-artifacts temporary
+
 # 1. VENDOR SOURCES
 #
 # Vendor sources, updating our cargo cache of crates.io
@@ -248,13 +282,23 @@ run_default_image_ro bash -c "$cargo_check"
 # Test in release-mode
 # Build and install in release-mode
 # Run integration tests
+# Copy to samedec-artifacts volume
 { cargo_build=$(cat) ; } <<'SCRIPT'
 cargo test --offline --frozen --workspace &&
 cargo test --offline --frozen --release --workspace &&
 cargo install --offline --frozen --path=crates/samedec &&
 qemu-run-maybe samedec --version &&
 ./sample/test.sh qemu-run-maybe samedec &&
+cp --archive "$(command -v samedec)" "/artifacts/samedec-$CARGO_BUILD_TARGET" &&
 echo >&2 "✔ OK $CARGO_BUILD_TARGET"
 SCRIPT
 
 run_all_images bash -c "$cargo_build"
+
+# 4. COPY ARTIFACTS
+copy_artifacts_to "$ARTIFACTS/$SOURCE_REV"
+(
+  cd "$ARTIFACTS" || exit 1
+  ln -srfT "$SOURCE_REV" "latest"
+)
+echo "$ARTIFACTS/latest"

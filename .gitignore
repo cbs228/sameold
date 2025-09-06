@@ -7,3 +7,6 @@
 # but we would prefer that this not be committed.
 .cargo
 /vendor
+
+# local-ci.sh artifacts
+/.artifacts

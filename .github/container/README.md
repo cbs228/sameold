@@ -23,12 +23,21 @@ Instead of using cross-rs, we create our own environment that includes all of th
 
 to build it. The build instructions are heavily influenced by the cross-rs project but do not depend on it.
 
-You can use any of these containers offline to build samedec. Define the following volumes:
+You can use any of these containers offline to build samedec. See the [`local-ci.sh`](../local-ci.sh) script for a working demonstration that includes:
+
+* A single `cargo vendor` download for all dependencies for all platforms
+* Source code linting
+* Documentation completeness checks
+* Multi-platform cross-compiling
+* Multi-platform testing in qemu
+* Artifact generation
+
+Or you can run it yourself. The containers require the following volumes:
 
 * `/src`: the repository root of a Rust project
-* `/install`: destination for binaries installed with `cargo install`
-* `/src/target` (**optional**): a build directory.
-* `/cargohome` (**optional**): a persistent `$CARGO_HOME` directory
+* `/install` (**optional**): destination for binaries installed with `cargo install`
+* `/src/target` (**optional**): a reusable build directory
+* `/cargo` (**optional**): a persistent `$CARGO_HOME`
 
 Example:
 
@@ -36,7 +45,7 @@ Example:
 mkdir -p out/aarch64-unknown-linux-gnu
 
 podman run \
-  --security-opt label=disable \
+  --security-opt=label=disable \
   --userns=keep-id:uid=1001,gid=1001 \
   --rm -it \
   --volume .:/src:ro \
