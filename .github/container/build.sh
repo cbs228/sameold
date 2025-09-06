@@ -144,6 +144,9 @@ selfdir="$(dirname "$(realpath -e "${0?}")")"
 SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --pretty=%ct -- "$selfdir" || date +%s)}"
 export SOURCE_DATE_EPOCH
 
+# set git revision
+SOURCE_REV="$(git log -1 --format='%H' -- "$selfdir" || echo "nogit")"
+
 # tag with "latest" and SOURCE_DATE_EPOCH
 CONTAINER_TAGS=("latest" "$(date --date '@'"$SOURCE_DATE_EPOCH" +'%Y-%m-%d')")
 
@@ -173,6 +176,7 @@ for containerdir in "${selfdir?}/"*-*-*; do
 
   buildcontainer \
     --from "$rust_tag" \
+    --build-arg SOURCE_REV="$SOURCE_REV" \
     --tag "${cur_tag}" \
     "${containerdir}"
 done
