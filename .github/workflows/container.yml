@@ -13,6 +13,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Log in to Github Container Registry
       run: buildah login ghcr.io/cbs228 --username ${{ github.actor }} --password ${{ secrets.GITHUB_TOKEN }}
