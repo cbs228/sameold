@@ -1,5 +1,27 @@
 # CHANGELOG
 
+## samedec-0.4.2: Expire/Purge Time Fix
+
+FIXES
+
+* Previous versions of samedec calculated `$SAMEDEC_PURGETIME` naively as:
+
+      issue datetime + purge duration
+
+  This is *almost* correct, but the SAME specification calls for rounding this value…
+
+  * … to the nearest 15 minute increment for durations ≤1 hour
+
+  * … to the nearest 30 minute increment for longer-duration messages
+
+  The purge time now rounds correctly.
+
+* Drop `slice-ring-buffer`, which had multiple [memory safety issues](https://rustsec.org/advisories/RUSTSEC-2025-0044). Testing has not revealed any ASAN findings in [samedec-0.4.1](#samedec-041-maintenance-release), but we have removed this dependency anyway out of an abundance of caution.
+
+OTHER
+
+Our CI environment, Github Actions, now uses containers that are themselves built by and within the Github Actions platform.
+
 ## samedec-0.4.1: Maintenance Release
 
 This minor maintenance release helps keep our dependencies
