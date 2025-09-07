@@ -21,14 +21,14 @@ use strum::EnumMessage;
 /// | `xxW`   | [warning](crate::SignificanceLevel::Warning)      |
 ///
 /// There are many message codes which do not follow this standard—and
-/// some even contradict it. sameold knows the correct significance
+/// some even contradict it. sameplace knows the correct significance
 /// code for these special cases, and the
 /// [event](crate::MessageHeader::event) API will return it.
 ///
 /// Significance codes can be converted directly from or to string.
 ///
 /// ```
-/// use sameold::SignificanceLevel;
+/// use sameplace::SignificanceLevel;
 ///
 /// assert_eq!(SignificanceLevel::Watch, SignificanceLevel::from("A"));
 /// assert_eq!(SignificanceLevel::Test, SignificanceLevel::from("T"));
@@ -45,7 +45,7 @@ use strum::EnumMessage;
 /// messages which may merit a "noisy" notification.
 ///
 /// ```
-/// # use sameold::SignificanceLevel;
+/// # use sameplace::SignificanceLevel;
 /// assert!(SignificanceLevel::Test < SignificanceLevel::Warning);
 /// assert!(SignificanceLevel::Watch < SignificanceLevel::Warning);
 /// ```
@@ -55,7 +55,7 @@ use strum::EnumMessage;
 /// messages with this significance level as a Warning.
 ///
 /// ```
-/// # use sameold::SignificanceLevel;
+/// # use sameplace::SignificanceLevel;
 /// assert_eq!(SignificanceLevel::Unknown, SignificanceLevel::from(""));
 /// assert!(SignificanceLevel::Unknown >= SignificanceLevel::Warning);
 /// ```

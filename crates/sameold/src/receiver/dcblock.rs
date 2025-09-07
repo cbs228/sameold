@@ -168,7 +168,7 @@ mod tests {
             output_history.push_scalar(uut.filter(100.0f32 + clk));
             clk = -1.0 * clk;
         }
-        assert_approx_eq!(output_history.as_slice()[0], 1.0f32, 1.0e-2);
-        assert_approx_eq!(output_history.as_slice()[1], -1.0f32, 1.0e-2);
+        assert_approx_eq!(output_history.inner()[0], 1.0f32, 1.0e-2);
+        assert_approx_eq!(output_history.inner()[1], -1.0f32, 1.0e-2);
     }
 }

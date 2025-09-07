@@ -1,0 +1,23 @@
+# See ./.github/container/README.md
+
+name: Rebuild CI containers
+
+on: workflow_dispatch
+
+jobs:
+  build:
+    name: Build container images
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Log in to Github Container Registry
+      run: buildah login ghcr.io/cbs228 --username ${{ github.actor }} --password ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build all containers
+      run: ./.github/container/build.sh --push

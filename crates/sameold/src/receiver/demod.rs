@@ -155,9 +155,8 @@ impl FskDemod {
     // * `< 0` for space
     fn demod_now(&self) -> f32 {
         // matched filter
-        let window = self.window_input.as_slice();
-        let mark = self.coeff_mark.filter(window);
-        let space = self.coeff_space.filter(window);
+        let mark = self.coeff_mark.filter(&self.window_input);
+        let space = self.coeff_space.filter(&self.window_input);
 
         // non-coherently sum matched filter powers to obtain
         // the symbol estimate

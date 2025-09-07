@@ -11,7 +11,7 @@ use strum::EnumMessage;
 /// [org code and callsign](Originator::from_org_and_call):
 ///
 /// ```
-/// use sameold::Originator;
+/// use sameplace::Originator;
 ///
 /// let orig = Originator::from_org_and_call("WXR", "KLOX/NWS");
 /// assert_eq!(Originator::NationalWeatherService, orig);
@@ -24,7 +24,7 @@ use strum::EnumMessage;
 /// Originators Display a human-readable string:
 ///
 /// ```
-/// # use sameold::Originator;
+/// # use sameplace::Originator;
 /// # let orig = Originator::from_org_and_call("WXR", "KLOX/NWS");
 /// assert_eq!("National Weather Service", orig.as_display_str());
 /// assert_eq!("National Weather Service", &format!("{}", orig));
@@ -36,7 +36,7 @@ use strum::EnumMessage;
 /// and/or Environment Canada:
 ///
 /// ```
-/// # use sameold::Originator;
+/// # use sameplace::Originator;
 /// assert_eq!(Originator::EnvironmentCanada,
 ///            Originator::from_org_and_call("WXR", "EC/GC/CA"));
 /// assert_eq!("WXR", Originator::EnvironmentCanada.as_code_str());

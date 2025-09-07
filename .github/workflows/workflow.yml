@@ -7,9 +7,6 @@ on:
   pull_request:
     branches: [ "develop" ]
 
-permissions:
-  contents: write
-
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
@@ -20,6 +17,14 @@ jobs:
   check_and_vendor:
     runs-on: ubuntu-latest
 
+    container:
+      image: ghcr.io/cbs228/sameold/builder/x86_64-unknown-linux-gnu:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      env:
+        CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+
     steps:
     - uses: actions/checkout@v4
       with:
@@ -29,13 +34,10 @@ jobs:
       if: github.event.pull_request.base.sha
       run: |
         git diff --check "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" || {
-          echo >&2 "Your pull request introduces whitespace errors,";
-          echo >&2 "which is not allowed. Please run:";
-          echo >&2;
-          echo >&2 "    git rebase --whitespace=fix";
-          echo >&2 "    git push -f";
-          echo >&2;
-          echo >&2 "to correct and resubmit.";
+          echo \
+            '::error title={Failed git diff --check}::Your pull request introduces whitespace errors, which is not allowed. Please run:%0A%0A'\
+            '   git rebase --whitespace=fix%0A'\
+            '   git push -f%0A%0Ato correct and resubmit.'
           exit 1;
         }
 
@@ -43,16 +45,11 @@ jobs:
       if: github.event.pull_request.base.sha
       run: |
         cargo fmt --check || { \
-          echo >&2 "Your pull request does not conform to cargo-fmt";
-          echo >&2 "Rust format, which is not allowed. Please run:";
-          echo >&2;
-          echo >&2 "    cargo fmt";
-          echo >&2 "    git commit -a --amend";
-          echo >&2 "    git push -f";
-          echo >&2;
-          echo >&2 "to correct and resubmit. If \`cargo fmt\` touches";
-          echo >&2 "code which is not part of your MR, please let us";
-          echo >&2 "know in the comments.";
+          echo \
+            '::error title={Failed cargo-fmt --check}::Your pull request does not conform to cargo-fmt, which is not allowed. Please run:%0A%0A' \
+            '   cargo fmt%0A' \
+            '   git commit -a --amend%0A' \
+            '   git push -f%0A%0Ato correct and resubmit. If the `cargo fmt` touches code which is not part of your original PR, please let us know in the comments.'
           exit 1;
         }
 
@@ -87,6 +84,30 @@ jobs:
         mkdir -p .cargo
         mkdir -p vendor
         cargo vendor --versioned-dirs --locked >.cargo/config.toml
+
+    - name: Check Rust lints (PRs only)
+      if: github.event.pull_request.base.sha
+      run: |
+        cargo check --frozen --locked --workspace || { \
+          echo \
+            '::error title={Failed cargo-check}::`cargo check` must pass without errors. Please correct Rust compiler lints. When you are finished, please run:%0A%0A' \
+            '    cargo fmt%0A' \
+            '    git commit -a --amend%0A' \
+            '    git push -f%0A%0Ato correct and resubmit. If this requires you to touch code which is not part of your original PR, please let us know in the comments.'
+          exit 1;
+        }
+
+    - name: Check documentation build (PRs only)
+      if: github.event.pull_request.base.sha
+      run: |
+        cargo doc --frozen --locked --no-deps --workspace || { \
+          echo \
+            '::error title={Failed cargo-doc build}::Documentation failed to build. `cargo doc` must be able to generate crate documentation without errors. Please fix. When you are finished, please run:%0A%0A' \
+            '    cargo fmt%0A' \
+            '    git commit -a --amend%0A' \
+            '    git push -f%0A%0Ato correct and resubmit. If this requires you to touch code which is not part of your original PR, please let us know in the comments.'
+          exit 1;
+        }
 
   # test sameold with all crate feature combinations,
   # in our Linux container
@@ -129,7 +150,7 @@ jobs:
       run: |
         cargo test --frozen -p sameold --verbose --no-default-features --features "${{ matrix.features }}"
 
-  # Test and release samedec on Linux, via containers
+  # Make release build of samedec for Linux, via containers
   release_samedec_linux:
     runs-on: ubuntu-latest
 
@@ -192,33 +213,6 @@ jobs:
         name: samedec-${{ matrix.target }}
         path: /install/bin/samedec-${{ matrix.target }}
         retention-days: 3
-
-    - name: Upload tagged release (tags only)
-      uses: svenstaro/upload-release-action@v2
-      if: startsWith(github.ref, 'refs/tags/samedec-')
-      with:
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: /install/bin/samedec-${{ matrix.target }}
-        overwrite: true
-
-    - name: Update tag for nightly release (develop-branch only)
-      uses: richardsimko/update-tag@v1
-      if: github.ref == 'refs/heads/develop'
-      with:
-        tag_name: latest
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Upload nightly release (develop-branch only)
-      uses: svenstaro/upload-release-action@v2
-      if: github.ref == 'refs/heads/develop'
-      with:
-        tag: "latest"
-        release_name: "Nightly Release"
-        body: "This is a rolling release built from the latest `develop` branch."
-        prerelease: true
-        file: /install/bin/samedec-${{ matrix.target }}
-        overwrite: true
 
   # MacOS and Windows builds
   release_samedec_nonlinux:
@@ -305,17 +299,33 @@ jobs:
         path: ${{ env.samedec_target_exe }}
         retention-days: 3
 
-    - name: Upload tagged release (tags only)
-      uses: svenstaro/upload-release-action@v2
-      if: startsWith(github.ref, 'refs/tags/samedec-')
+  # Publish nightly builds
+  publish_nightly:
+    runs-on: ubuntu-latest
+
+    if: github.ref == 'refs/heads/develop'
+
+    permissions:
+      contents: write
+
+    needs:
+    - test_sameold
+    - release_samedec_linux
+    - release_samedec_nonlinux
+
+    name: Publish Nightly
+
+    steps:
+
+    - name: Download All Artifacts
+      uses: actions/download-artifact@v5
       with:
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: ${{ env.samedec_target_exe }}
-        overwrite: true
+        path: publish
+        pattern: samedec-*
+        merge-multiple: true
 
     - name: Update tag for nightly release (develop-branch only)
       uses: richardsimko/update-tag@v1
-      if: github.ref == 'refs/heads/develop'
       with:
         tag_name: latest
       env:
@@ -323,11 +333,44 @@ jobs:
 
     - name: Upload nightly release (develop-only)
       uses: svenstaro/upload-release-action@v2
-      if: github.ref == 'refs/heads/develop'
       with:
         tag: "latest"
         release_name: "Nightly Release"
         body: "This is a rolling release built from the latest `develop` branch."
         prerelease: true
-        file: ${{ env.samedec_target_exe }}
+        file_glob: true
+        file: publish/samedec-*
+        overwrite: true
+
+  # Publish tagged release
+  publish_tag:
+    runs-on: ubuntu-latest
+
+    if: startsWith(github.ref, 'refs/tags/samedec-')
+
+    permissions:
+      contents: write
+
+    needs:
+    - test_sameold
+    - release_samedec_linux
+    - release_samedec_nonlinux
+
+    name: Publish Tag
+
+    steps:
+
+    - name: Download All Artifacts
+      uses: actions/download-artifact@v5
+      with:
+        path: publish
+        pattern: samedec-*
+        merge-multiple: true
+
+    - name: Upload tagged release (tags only)
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file_glob: true
+        file: publish/samedec-*
         overwrite: true

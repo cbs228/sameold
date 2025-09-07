@@ -37,7 +37,9 @@ ENV PATH=/install/bin:/usr/local/cargo/bin:$PATH \
 
 # Instructions adapted from official Docker image
 # <https://github.com/rust-lang/docker-rust/blob/master/Dockerfile-slim.template>
-RUN set -eux; \
+RUN --mount=type=bind,src=./rootfiles,dst=/rootfiles,ro \
+    set -eux; \
+    install --mode=0755 -t /usr/local/bin /rootfiles/qemu-run-maybe; \
     export CARGO_HOME=/usr/local/cargo; \
     [ -n "${RUSTUP_URL:-}" ] || RUSTUP_URL="https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${RUSTUP_ARCH}/rustup-init"; \
     curl -O -sSf "$RUSTUP_URL"; \
@@ -51,9 +53,7 @@ RUN set -eux; \
     rustc --version; \
     rustup set auto-self-update disable; \
     echo "$RUST_VERSIONS" | xargs rustup toolchain add --profile minimal; \
+    rustup component add --toolchain "$default_rust" rustfmt; \
     (umask 022 && echo "$RUSTUP_ARCH" >/etc/rust-native-arch)
-
-# Install scripts
-COPY rootfiles /
 
 LABEL org.opencontainers.image.description="A pinned Rust toolchain with rustup."

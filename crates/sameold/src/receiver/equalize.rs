@@ -133,6 +133,9 @@ impl Equalizer {
         let feedforward_wind = Window::new(nfeedforward);
         let feedback_wind = Window::new(nfeedback);
 
+        assert_eq!(feedforward_coeff.inner().len(), feedforward_wind.len());
+        assert_eq!(feedback_coeff.inner().len(), feedback_wind.len());
+
         Self {
             relaxation,
             regularization,
@@ -314,14 +317,16 @@ impl Equalizer {
             self.relaxation,
             self.regularization,
             error,
-            self.feedforward_wind.as_ref(),
+            &self.feedforward_wind,
             self.feedforward_coeff.as_mut(),
         );
+
+        assert_eq!(self.feedback_wind.inner().len(), self.feedback_coeff.len());
         nlms_update(
             self.relaxation,
             self.regularization,
             -error,
-            self.feedback_wind.as_ref(),
+            &self.feedback_wind,
             self.feedback_coeff.as_mut(),
         );
     }
@@ -346,17 +351,14 @@ enum EqualizerState {
 // variable gain. The gain is computed based on the power
 // of the input. The given `filter` taps are updated based
 // on the input samples in `window`.
-fn nlms_update(
-    relaxation: f32,
-    regularization: f32,
-    error: f32,
-    window: &[f32],
-    filter: &mut [f32],
-) {
-    assert_eq!(window.len(), filter.len());
-
-    let gain = nlms_gain(relaxation, regularization, window);
-    for (coeff, data) in filter.iter_mut().zip(window.iter()) {
+fn nlms_update<W>(relaxation: f32, regularization: f32, error: f32, window: W, filter: &mut [f32])
+where
+    W: IntoIterator<Item = f32>,
+    W::IntoIter: DoubleEndedIterator + Clone,
+{
+    let window = window.into_iter();
+    let gain = nlms_gain(relaxation, regularization, window.clone());
+    for (coeff, data) in filter.iter_mut().zip(window.rev()) {
         *coeff += gain * error * data;
     }
 }
@@ -371,7 +373,10 @@ fn nlms_update(
 //
 // where `norm(x, 2)` is the L² norm of `x`
 #[inline]
-fn nlms_gain(relaxation: f32, regularization: f32, window: &[f32]) -> f32 {
+fn nlms_gain<'a, W>(relaxation: f32, regularization: f32, window: W) -> f32
+where
+    W: IntoIterator<Item = f32>,
+{
     let mut sumsq = 0.0f32;
     for w in window {
         sumsq += w * w;
@@ -473,7 +478,7 @@ mod tests {
                 RELAXATION,
                 REGULARIZATION,
                 err,
-                inverse_wind.as_ref(),
+                &inverse_wind,
                 inverse_coeff.as_mut(),
             );
         }

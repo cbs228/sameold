@@ -1,4 +1,4 @@
-//! # List of SAME Events Codes Known to `sameold`
+//! # List of SAME Events Codes Known to `sameplace`
 //!
 //! | `XYZ` | Description                            |
 //! |-------|----------------------------------------|
@@ -82,7 +82,7 @@ pub(crate) type CodeEntry = (Phenomenon, SignificanceLevel);
 /// Lookup a three-character SAME event code in the database
 ///
 /// If the input `code` matches a `CodeEntry` that is known to
-/// sameold, returns it. If no exact match could be found, the
+/// sameplace, returns it. If no exact match could be found, the
 /// third character is matched as a significance level only. If
 /// even that does not match, returns `None`.
 pub(crate) fn parse_event<S>(code: S) -> Option<CodeEntry>

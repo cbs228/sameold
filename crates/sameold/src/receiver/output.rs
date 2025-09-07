@@ -1,4 +1,4 @@
-use crate::message::{Message, MessageResult};
+use crate::{Message, MessageResult};
 
 /// Full SAME receiver status
 ///

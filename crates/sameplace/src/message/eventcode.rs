@@ -23,7 +23,7 @@ use super::significance::SignificanceLevel;
 /// be directly created from string.
 ///
 /// ```
-/// use sameold::{EventCode, Phenomenon, SignificanceLevel};
+/// use sameplace::{EventCode, Phenomenon, SignificanceLevel};
 ///
 /// let evt = EventCode::from("RWT");
 /// assert_eq!(evt.phenomenon(), Phenomenon::RequiredWeeklyTest);
@@ -33,7 +33,7 @@ use super::significance::SignificanceLevel;
 /// EventCode are `Ord` by their significance levels.
 ///
 /// ```
-/// # use sameold::EventCode;
+/// # use sameplace::EventCode;
 /// assert!(EventCode::from("RWT") < EventCode::from("SVA"));
 /// assert!(EventCode::from("SVA") < EventCode::from("SVR"));
 /// ```
@@ -42,7 +42,7 @@ use super::significance::SignificanceLevel;
 /// both phenomenon and significance.
 ///
 /// ```
-/// # use sameold::EventCode;
+/// # use sameplace::EventCode;
 /// # use std::fmt;
 /// assert_eq!(EventCode::from("SVA").to_string(), "Severe Thunderstorm Watch");
 /// ```
@@ -51,7 +51,7 @@ use super::significance::SignificanceLevel;
 /// result in an [unrecognized](EventCode::is_unrecognized) message.
 ///
 /// ```
-/// # use sameold::{EventCode, SignificanceLevel};
+/// # use sameplace::{EventCode, SignificanceLevel};
 /// let watch = EventCode::from("??A");
 /// assert!(watch.is_unrecognized());
 /// assert_eq!(watch.significance(), SignificanceLevel::Watch);
@@ -82,7 +82,7 @@ impl EventCode {
     /// string representation of a three-character SAME event `code`,
     /// like "`RWT`," into a machine-readable event.
     ///
-    /// If the input `code` is not known to `sameold`, is not in the
+    /// If the input `code` is not known to `sameplace`, is not in the
     /// required format (i.e., three ASCII characters), or is otherwise
     /// not valid, the output of
     /// [`is_unrecognized()`](EventCode::is_unrecognized) will be

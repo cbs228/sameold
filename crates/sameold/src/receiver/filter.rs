@@ -62,12 +62,12 @@
 //! wind.push(&[1.0f32, 2.0f32, 3.0f32, 4.0f32]);
 //! ```
 
+use std::collections::VecDeque;
 use std::convert::AsRef;
 
 use nalgebra::base::Scalar;
 use nalgebra::DVector;
 use num_traits::{One, Zero};
-use slice_ring_buffer::SliceRingBuffer;
 
 /// FIR filter coefficients
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq)]
@@ -85,18 +85,12 @@ where
     /// Creates FIR filter coefficients with the specified impulse
     /// response `h`. The coefficients `h` use the same representation
     /// as GNU Octave's `filter()` function.
-    ///
-    /// Internally, the coefficients are stored reversed. This improves
-    /// performance against most types of queues for the input signal.
     pub fn from_slice<S>(h: S) -> Self
     where
         S: AsRef<[T]>,
     {
         let inp = h.as_ref();
-        FilterCoeff(DVector::from_iterator(
-            inp.len(),
-            inp.iter().rev().map(|d| *d),
-        ))
+        FilterCoeff(DVector::from_iterator(inp.len(), inp.iter().copied()))
     }
 
     /// Create an identity filter
@@ -107,7 +101,7 @@ where
             len,
             std::iter::repeat(T::zero()).take(len),
         ));
-        out.0[len - 1] = T::one();
+        out.0[0] = T::one();
         out
     }
 
@@ -116,25 +110,26 @@ where
         self.0.len()
     }
 
-    /// Perform FIR filtering with the given sample history slice
+    /// Perform FIR filtering with the given sample history
     ///
     /// Computes the current output sample of the filter assuming
-    /// the given `history`. `history` should be a slice where
-    /// `history[N-1]` is the most recent sample and `history[0]`
-    /// is the least recent/oldest sample.
+    /// the given `history`. `history` must be a
+    /// `DoubledEndedIterator` which outputs the oldest sample
+    /// first and the newest sample last. The newest sample is
+    /// used for feedforward lag 0. `history` SHOULD contain at
+    /// least `self.len()` samples, but no error is raised if it
+    /// is shorter.
     ///
-    /// The caller should maintain a deque of history. New samples
-    /// should be pushed to the end of the queue, and old samples
-    /// should age off the head of the queue. The queue *should*
-    /// contain `self.len()` samples, but it is not an error if
-    /// it contains more or less.
-    pub fn filter<I, In, Out>(&self, history: I) -> Out
+    /// The caller is encouraged to use a deque for `history`,
+    /// but this is not enforced.
+    pub fn filter<W, In, Out>(&self, history: W) -> Out
     where
-        I: AsRef<[In]>,
+        W: IntoIterator<Item = In>,
+        W::IntoIter: DoubleEndedIterator,
         In: Copy + Scalar + std::ops::Mul<T, Output = Out>,
         Out: Copy + Scalar + Zero + std::ops::AddAssign,
     {
-        multiply_accumulate(history.as_ref(), self.as_ref())
+        multiply_accumulate(history, self.as_ref())
     }
 
     /// Reset to identity filter
@@ -142,42 +137,31 @@ where
     /// The filter coefficients are reset to a "no-op" identity
     /// filter.
     pub fn identity(&mut self) {
-        let len = self.0.len();
         for coeff in self.0.iter_mut() {
             *coeff = T::zero();
         }
-        self.0[len - 1] = T::one();
+        self.0[0] = T::one();
     }
 
     /// Return filter coefficients as slice
-    ///
-    /// The filter coefficients are in *reverse* order
-    /// from their Octave representation.
     #[inline]
     pub fn as_slice(&self) -> &[T] {
         self.0.as_slice()
     }
 
     /// Return filter coefficients as mutable slice
-    ///
-    /// The filter coefficients are in *reverse* order
-    /// from their Octave representation.
     #[inline]
     pub fn as_mut_slice(&mut self) -> &mut [T] {
         self.0.as_mut_slice()
     }
 
     /// Obtain filter coefficients
-    ///
-    /// The coefficients are output in reverse order.
     #[inline]
     pub fn inner(&self) -> &DVector<T> {
         &self.0
     }
 
     /// Obtain filter coefficients (mutable)
-    ///
-    /// The coefficients are output in reverse order.
     #[inline]
     pub fn inner_mut(&mut self) -> &mut DVector<T> {
         &mut self.0
@@ -231,7 +215,7 @@ where
 /// Implements a fixed-size lookback window for FIR filters
 /// or other purposes.
 #[derive(Clone, Debug)]
-pub struct Window<T>(SliceRingBuffer<T>)
+pub struct Window<T>(VecDeque<T>)
 where
     T: Copy + Scalar + Zero;
 
@@ -242,27 +226,19 @@ where
 {
     /// Create empty window, filling it with zeros
     ///
-    /// Creates a new `Window` with the given `len`gth, with
-    /// `len > 0`.
+    /// Creates a new `Window` with the given `len`gth
     pub fn new(len: usize) -> Self {
-        assert!(len > 0);
-
-        let mut out = Self(SliceRingBuffer::with_capacity(len));
-        for _i in 0..len {
-            out.0.push_front(T::zero());
-        }
-        assert_eq!(len, out.0.len());
-        out
+        let mut q = VecDeque::with_capacity(len);
+        q.resize(len, T::zero());
+        Self(q)
     }
 
     /// Reset to zero initial conditions
     ///
     /// Clear the window, filling it with zeros
     pub fn reset(&mut self) {
-        let len = self.0.len();
-        self.0.clear();
-        for _i in 0..len {
-            self.0.push_front(T::zero());
+        for s in &mut self.0 {
+            *s = T::zero()
         }
     }
 
@@ -275,7 +251,7 @@ where
     ///
     /// Appends the `input` slice to the right side of the Window.
     /// The last sample of `input` becomes the right-most / most recent
-    /// sample of the Window slice.
+    /// sample of the Window.
     ///
     /// If the length of `input` exceeds the length of the Window,
     /// then the right-most chunk of `input` will be taken.
@@ -295,35 +271,42 @@ where
         std::mem::drop(self.0.drain(0..input.len()));
 
         // add new
-        self.0.extend_from_slice(input.as_ref());
+        self.0.extend(input.as_ref());
     }
 
     /// Append a scalar to the sample window
     ///
     /// Appends the `input` scalar to the right side of the Window.
-    /// It becomes the last / most recent sample of the Window
-    /// slice. Returns the sample that was formerly the oldest
+    /// It becomes the last / most recent sample of Window.
+    /// Returns the sample that was formerly the oldest
     /// sample in the Window.
     #[inline]
     pub fn push_scalar(&mut self, input: T) -> T {
-        let out = self.0.pop_front().unwrap();
+        let out = self.0.pop_front().unwrap_or(T::zero());
         self.0.push_back(input);
         out
     }
 
-    /// Obtain the inner SliceRingBuffer
-    pub fn inner(&self) -> &SliceRingBuffer<T> {
-        &self.0
+    /// Iterator over window contents
+    ///
+    /// The iterator outputs the least recent sample first.
+    /// The most recent sample is output last.
+    pub fn iter(&self) -> <&Window<T> as IntoIterator>::IntoIter {
+        self.into_iter()
     }
 
-    /// Obtain current window contents, as a slice
+    /// Convert window contents to a vector
     ///
-    /// The zeroth sample of the slice is the least recent
-    /// sample in the window. The last sample of the slice
-    /// is the most recent sample in the window.
-    #[inline]
-    pub fn as_slice(&self) -> &[T] {
-        self.0.as_slice()
+    /// Copy the current contents of the window to a freshly-allocated
+    /// vector. Vector elements are ordered from least recent sample
+    /// to most recent sample.
+    pub fn to_vec(&self) -> Vec<T> {
+        self.iter().collect()
+    }
+
+    /// Obtain the inner SliceRingBuffer
+    pub fn inner(&self) -> &VecDeque<T> {
+        &self.0
     }
 
     /// Most recent element pushed into the Window
@@ -339,12 +322,16 @@ where
     }
 }
 
-impl<T> AsRef<[T]> for Window<T>
+impl<'a, T> IntoIterator for &'a Window<T>
 where
     T: Copy + Scalar + Zero,
 {
-    fn as_ref(&self) -> &[T] {
-        self.as_slice()
+    type Item = T;
+
+    type IntoIter = std::iter::Copied<std::collections::vec_deque::Iter<'a, T>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter().copied()
     }
 }
 
@@ -360,11 +347,11 @@ where
 // `history` contains the sample history. The most recent sample
 // is stored in `history[N-1]`, and the least recent sample in the
 // history is stored in `history[0]`. The filter coefficients are
-// stored *reversed* in `rev_coeff`, with `rev_coeff[N-1]` being
-// the zeroth filter coefficient.
+// stored in `coeff`, with `coeff[0]` being the zeroth filter
+// coefficient.
 //
-// The two slices need not be the same length. If `history` is shorter
-// than `rev_coeff`, then the sample history is assumed to be zero
+// The two inputs need not be the same length. If `history` is shorter
+// than `coeff`, then the sample history is assumed to be zero
 // outside of its range.
 //
 // To perform FIR filtering, new samples are shifted onto the end of
@@ -373,19 +360,18 @@ where
 //
 // The output value is returned. Any compatible arithmetic types may
 // be used, including complex numbers.
-fn multiply_accumulate<In, Coeff, Out>(history: &[In], rev_coeff: &[Coeff]) -> Out
+fn multiply_accumulate<W, In, Coeff, Out>(history: W, coeff: &[Coeff]) -> Out
 where
+    W: IntoIterator<Item = In>,
+    W::IntoIter: DoubleEndedIterator,
     In: Copy + Scalar + std::ops::Mul<Coeff, Output = Out>,
     Coeff: Copy + Scalar,
     Out: Copy + Scalar + Zero + std::ops::AddAssign,
 {
-    let mul_len = usize::min(history.len(), rev_coeff.len());
-    let history = &history[history.len() - mul_len..];
-    let rev_coeff = &rev_coeff[rev_coeff.len() - mul_len..];
-
+    let history = history.into_iter();
     let mut out = Out::zero();
-    for (hi, co) in history.iter().zip(rev_coeff.iter()) {
-        out += *hi * *co;
+    for (hi, co) in history.rev().zip(coeff.iter()) {
+        out += hi * *co;
     }
     out
 }
@@ -407,11 +393,11 @@ mod tests {
         // simple multiplies; we clip to the end
         let out = multiply_accumulate(&[20.0f32, 1.0f32], &[1.0f32]);
         assert_eq!(1.0f32, out);
-        let out = multiply_accumulate(&[1.0f32], &[20.0f32, 1.0f32]);
+        let out = multiply_accumulate(&[1.0f32], &[1.0f32, 20.0f32]);
         assert_eq!(1.0f32, out);
 
         // more complicated multiply
-        let out = multiply_accumulate(&[20.0f32, 20.0f32], &[-1.0f32, 1.0f32]);
+        let out = multiply_accumulate(&[20.0f32, 20.0f32], &[1.0f32, -1.0f32]);
         assert_approx_eq!(0.0f32, out);
     }
 
@@ -431,13 +417,13 @@ mod tests {
 
     #[test]
     fn test_filter_identity() {
-        const EXPECT: &[f32] = &[0.0f32, 0.0f32, 0.0f32, 1.0f32];
+        const EXPECT: &[f32] = &[1.0f32, 0.0f32, 0.0f32, 0.0f32];
 
         let mut filter = FilterCoeff::<f32>::from_identity(4);
         assert_eq!(EXPECT, filter.as_ref());
         assert_eq!(10.0f32, filter.filter(&[10.0f32]));
 
-        filter[2] = 5.0f32;
+        filter[3] = 5.0f32;
         filter.identity();
         assert_eq!(EXPECT, filter.as_ref());
     }
@@ -446,15 +432,17 @@ mod tests {
     fn test_window() {
         let mut wind: Window<f32> = Window::new(4);
         assert_eq!(4, wind.len());
-        assert_eq!(&[0.0f32, 0.0f32, 0.0f32, 0.0f32], wind.as_slice());
+        assert_eq!(vec![0.0f32, 0.0f32, 0.0f32, 0.0f32], wind.to_vec());
         wind.push(&[1.0f32]);
-        assert_eq!(&[0.0f32, 0.0f32, 0.0f32, 1.0f32], wind.as_slice());
+        assert_eq!(vec![0.0f32, 0.0f32, 0.0f32, 1.0f32], wind.to_vec());
+        wind.push(&[]);
+        assert_eq!(vec![0.0f32, 0.0f32, 0.0f32, 1.0f32], wind.to_vec());
 
         wind.push(&[2.0f32]);
-        assert_eq!(&[0.0f32, 0.0f32, 1.0f32, 2.0f32], wind.as_slice());
+        assert_eq!(vec![0.0f32, 0.0f32, 1.0f32, 2.0f32], wind.to_vec());
 
         wind.push(&[-1.0f32, -2.0f32, 1.0f32, 2.0f32, 3.0f32, 4.0f32]);
-        assert_eq!(&[1.0f32, 2.0f32, 3.0f32, 4.0f32], wind.as_slice());
+        assert_eq!(vec![1.0f32, 2.0f32, 3.0f32, 4.0f32], wind.to_vec());
         assert_eq!(4.0f32, wind.back());
         assert_eq!(1.0f32, wind.front());
         assert_eq!(4, wind.len());
@@ -462,10 +450,14 @@ mod tests {
         // push individual samples works too
         assert_eq!(1.0f32, wind.push_scalar(10.0f32));
         assert_eq!(4, wind.len());
-        assert_eq!(&[2.0f32, 3.0f32, 4.0f32, 10.0f32], wind.as_slice());
+        assert_eq!(vec![2.0f32, 3.0f32, 4.0f32, 10.0f32], wind.to_vec());
+
+        // exactly enough to fill
+        wind.push(&[5.0f32, 4.0f32, 3.0f32, 2.0f32]);
+        assert_eq!(vec![5.0f32, 4.0f32, 3.0f32, 2.0f32], wind.to_vec());
 
         wind.reset();
         assert_eq!(4, wind.len());
-        assert_eq!(&[0.0f32, 0.0f32, 0.0f32, 0.0f32], wind.as_slice());
+        assert_eq!(vec![0.0f32, 0.0f32, 0.0f32, 0.0f32], wind.to_vec());
     }
 }

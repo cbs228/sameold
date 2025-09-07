@@ -2,7 +2,7 @@
 name = "samedec"
 rust-version = "1.74"
 description = "A SAME/EAS digital receiver and alerting program"
-version = "0.4.1"
+version = "0.4.2"
 authors = ["Colin S <3526918+cbs228@users.noreply.github.com>"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
@@ -11,7 +11,8 @@ repository = "https://github.com/cbs228/sameold.git"
 readme = "README.md"
 
 [dependencies]
-sameold = {path = "../sameold", version = "^0.5.0"}
+sameold = {path = "../sameold", version = "^0.6.0"}
+sameplace = {path = "../sameplace", version = "^0.2.0", features = ["chrono"]}
 anyhow = "^1"
 byteorder = "^1.4"
 clap = {version = "^4.5", features = ["color", "derive", "wrap_help"]}

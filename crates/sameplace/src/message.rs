@@ -24,25 +24,34 @@ pub type MessageResult = Result<Message, MessageDecodeErr>;
 
 /// A fully-decoded SAME/EAS message
 ///
-/// In the EAS, the "message" is actually the audio signal to be
-/// broadcast to the human listener: i.e., the "message" is the
-/// synthesized voice you hear on weather radio. The message is
-/// wrapped in *audio pass-band* digital data. The digital data
-/// demarcates the `StartOfMessage` and the `EndOfMessage`.
+/// In order to automatically disseminate alerts, SAME/EAS wraps a
+/// **voice message** in digital data. The digital data demarcates the
+/// [`StartOfMessage`](Message::StartOfMessage) and the
+/// [`EndOfMessage`](Message::EndOfMessage). Again, the digital data
+/// is **not** the message. The "message" in EAS is the voice message
+/// that is intended for a human listener.
 ///
-/// The `StartOfMessage` contains digital codes and timestamps
-/// which summarize the audio message to follow. Some messages
-/// are intended for either silent or audible tests. Others
-/// report actual emergencies; these either may or must interrupt
-/// normal broadcast programming.
+/// With that said, the digital headers provide a good deal of
+/// information about the message.
 ///
-/// The audio message immediately follows. The audio message may
-/// be up to two minutes long.
+/// 1. The [`StartOfMessage`](Message::StartOfMessage) contains
+///    digital codes and timestamps which summarize the audio
+///    message to follow. Some messages are intended for either
+///    silent or audible tests. Others report actual emergencies;
+///    these either may or must interrupt normal broadcast
+///    programming.
 ///
-/// The `EndOfMessage` demarcates the end of the audio message.
+/// 2. The voice message immediately follows. The voice message may
+///    be up to two minutes long and is intended for streaming
+///    playback. This datatype does not represent the audio.
+///
+/// 3. The [`EndOfMessage`](Message::EndOfMessage) demarcates the
+///    end of the audio message.
 ///
 /// `Message` implements `Display` and efficient conversion to
-/// `&str`.
+/// `&str`. These methods output the wireline text representation,
+/// such as "`ZCZC-...`" for `StartOfMessage` and `NNNN` for
+/// `EndOfMessage`.
 ///
 /// More information on the SAME/EAS standard may be found in,
 /// * "NOAA Weather Radio (NWR) All Hazards Specific Area Message
@@ -89,7 +98,10 @@ pub enum MessageDecodeErr {
 }
 
 impl Message {
-    /// Convert to string representation
+    /// Wireline Text Representation
+    ///
+    /// Outputs UTF-8 string representation: i.e., `ZCZC-...`
+    /// for start-of-message or `NNNN` for end-of-message.
     pub fn as_str(&self) -> &str {
         match self {
             Self::StartOfMessage(m) => m.as_str(),
@@ -105,7 +117,9 @@ impl Message {
     /// system.
     ///
     /// Parity errors are *not* tracked for the `EndOfMessage`
-    /// variant.
+    /// variant. Parity errors are only tracked within sameold
+    /// and aren't available for Messages constructed from
+    /// string.
     pub fn parity_error_count(&self) -> usize {
         match self {
             Self::StartOfMessage(m) => m.parity_error_count(),
@@ -121,7 +135,8 @@ impl Message {
     /// available.
     ///
     /// Voting counts are *not* tracked for the `EndOfMessage`
-    /// variant.
+    /// variant. Voting counts are only tracked within sameold
+    /// and aren't available for Messages constructed from string.
     pub fn voting_byte_count(&self) -> usize {
         match self {
             Self::StartOfMessage(m) => m.voting_byte_count(),
@@ -236,20 +251,24 @@ impl MessageHeader {
         Ok(out)
     }
 
-    /// Message text
+    /// Wireline Text Representation
     ///
     /// Returns UTF-8 string representation of a SAME/EAS
-    /// message. Use the [`release()`](#method.release)
-    /// method to obtain an owned `String`.
+    /// start-of-message: i.e., `ZCZC-...`
+    ///
+    /// Use [`release()`](MessageHeader::release()) to obtain
+    /// an owned `String` instead.
     pub fn message(&self) -> &str {
         &self.message
     }
 
-    /// Message text
+    /// Wireline Text Representation
     ///
     /// Returns UTF-8 string representation of a SAME/EAS
-    /// message. Use the [`release()`](#method.release)
-    /// method to obtain an owned `String`.
+    /// start-of-message: i.e., `ZCZC-...`
+    ///
+    /// Use [`release()`](MessageHeader::release()) to obtain
+    /// an owned `String` instead.
     pub fn as_str(&self) -> &str {
         &self.message
     }
@@ -300,7 +319,7 @@ impl MessageHeader {
     ///
     /// ```
     /// # use std::fmt;
-    /// use sameold::{MessageHeader, Phenomenon, SignificanceLevel};
+    /// use sameplace::{MessageHeader, Phenomenon, SignificanceLevel};
     ///
     /// let msg = MessageHeader::new("ZCZC-WXR-RWT-012345+0351-3662322-NOCALL  -").unwrap();
     /// let evt = msg.event();
@@ -316,7 +335,7 @@ impl MessageHeader {
     ///
     /// ```
     /// # use std::fmt;
-    /// # use sameold::{MessageHeader, SignificanceLevel};
+    /// # use sameplace::{MessageHeader, SignificanceLevel};
     /// let msg = MessageHeader::new("ZCZC-WXR-OMG-012345+0351-3662322-NOCALL  -").unwrap();
     /// assert_eq!(msg.event_str(), "OMG");
     /// assert_eq!(msg.event().to_string(), "Unrecognized Warning");
@@ -330,7 +349,7 @@ impl MessageHeader {
     /// be treated as Warnings.
     ///
     /// [`eventcodes`](crate::eventcodes) contains the complete list of SAME
-    /// codes that are interpreted by `sameold`. See also: [`EventCode`].
+    /// codes that are interpreted by `sameplace`. See also: [`EventCode`].
     pub fn event(&self) -> EventCode {
         EventCode::from(self.event_str())
     }
@@ -344,7 +363,7 @@ impl MessageHeader {
     /// a human-readable display.
     ///
     /// See [`eventcodes`](crate::eventcodes) for the complete list
-    /// of SAME codes that are interpreted by `sameold`. The string value
+    /// of SAME codes that are interpreted by `sameplace`. The string value
     /// is not guaranteed to be one of these codes.
     pub fn event_str(&self) -> &str {
         &self.message[Self::OFFSET_EVT..Self::OFFSET_EVT + 3]
@@ -370,26 +389,36 @@ impl MessageHeader {
         self.location_str().split('-')
     }
 
-    /// Message validity duration (Duration)
+    /// Message validity duration (`Duration`)
     ///
-    /// Returns the message validity duration. The message is
-    /// valid until
+    /// Returns the message validity duration or "purge time."
+    /// The duration specifies how long, relative to the
+    /// [issue time](MessageHeader::issue_datetime), that the
+    /// message is valid.
     ///
-    /// ```ignore
-    /// msg.issue_datetime().unwrap() + msg.valid_duration()
-    /// ```
+    /// The Duration is typically:
     ///
-    /// After this time elapses, the message is no longer valid
-    /// and should not be relayed or alerted to anymore.
+    /// * increments of **15 minutes** for Durations of
+    ///   **1 hour** or less
     ///
-    /// This field represents the validity time of the *message*
+    /// * increments of **30 minutes** for Durations longer
+    ///   than **1 hour**
+    ///
+    /// * no longer than
+    ///   [99.5 hours](https://www.weather.gov/nwr/samealertduration)
+    ///
+    /// but sameplace does not enforce any of these restrictions.
+    ///
+    /// This field represents the validity duration of the *message*
     /// and not the expected duration of the severe condition.
-    /// Severe conditions may persist after the message expires!
-    /// (And might be the subject of future messages.)
+    /// **An expired message may still refer to an ongoing hazard** or
+    /// event. Expiration merely indicates that the *message* is no
+    /// longer valid. Clients are encouraged to retain a history of
+    /// alerts and voice message contents.
     ///
     /// The valid duration is relative to the
-    /// [`issue_datetime()`](#method.issue_datetime) and *not* the
-    /// current time.
+    /// [`issue_datetime()`](MessageHeader::issue_datetime) and
+    /// *not* the current time.
     ///
     /// Requires `chrono`.
     #[cfg(feature = "chrono")]
@@ -402,14 +431,33 @@ impl MessageHeader {
     ///
     /// Returns the message validity duration or "purge time."
     /// This is a tuple of (`hours`, `minutes`).
+    /// The duration specifies how long, relative to the
+    /// [issue time](MessageHeader::issue_datetime), that the
+    /// message is valid.
     ///
-    /// This field represents the validity time of the *message*
+    /// The duration is typically:
+    ///
+    /// * increments of **15 minutes** for durations of
+    ///   **1 hour** or less
+    ///
+    /// * increments of **30 minutes** for durations longer
+    ///   than **1 hour**
+    ///
+    /// * no longer than
+    ///   [99.5 hours](https://www.weather.gov/nwr/samealertduration)
+    ///
+    /// but sameplace does not enforce any of these restrictions.
+    ///
+    /// This field represents the validity duration of the *message*
     /// and not the expected duration of the severe condition.
-    /// Severe conditions may persist after the message expires!
-    /// (And might be the subject of future messages.)
+    /// **An expired message may still refer to an ongoing hazard** or
+    /// event. Expiration merely indicates that the *message* is no
+    /// longer valid. Clients are encouraged to retain a history of
+    /// alerts and voice message contents.
     ///
     /// The valid duration is relative to the
-    /// [`issue_daytime_fields()`](#method.issue_daytime_fields).
+    /// [`issue_datetime()`](MessageHeader::issue_datetime) and
+    /// *not* the current time.
     pub fn valid_duration_fields(&self) -> (u8, u8) {
         let dur_str = &self.message[self.offset_time + Self::OFFSET_FROMPLUS_VALIDTIME
             ..self.offset_time + Self::OFFSET_FROMPLUS_VALIDTIME + 4];
@@ -452,28 +500,73 @@ impl MessageHeader {
         )
     }
 
+    /// Message purge/expiration datetime (UTC)
+    ///
+    /// Compute the datetime that the SAME message should be
+    /// *purged* or discarded. The caller must provide the time
+    /// that the message was `received`.
+    ///
+    /// The returned timestamp is rounded per NWSI 10-1712:
+    ///
+    /// * For [valid durations](MessageHeader::valid_duration) ≤01h00m,
+    ///   the timestamp is rounded to the nearest 15 minutes
+    ///
+    /// * For valid durations greater than an hour, the timestamp is
+    ///   rounded to the nearest 30 minutes
+    ///
+    /// An error is returned if we are unable to calculate
+    /// a valid timestamp. This can happen, for example, if we
+    /// project a message sent on Julian/Ordinal Day 366 into a
+    /// year that is not a leap year.
+    ///
+    /// SAME headers do not include the year of issuance. This makes
+    /// it impossible to calculate the full datetime of issuance—or
+    /// purge, for that matter—without a rough idea of the message's
+    /// true UTC time. It is *unnecessary* for the `received` time
+    /// to be a precision timestamp. As long as the provided value
+    /// is within ±90 days of true UTC, the output time will be
+    /// correct.
+    ///
+    /// This field represents the expiration time of the *message*
+    /// and not the expected duration of the severe condition.
+    /// **An expired message may still refer to an ongoing hazard** or
+    /// event. Expiration merely indicates that the *message* is no
+    /// longer valid. Clients are encouraged to retain a history of
+    /// alerts and voice message contents.
+    ///
+    /// Requires `chrono`.
+    #[cfg(feature = "chrono")]
+    pub fn purge_datetime(
+        &self,
+        received: &DateTime<Utc>,
+    ) -> Result<DateTime<Utc>, InvalidDateErr> {
+        calculate_expire_time(&self.issue_datetime(received)?, &self.valid_duration())
+    }
+
     /// Is the message expired?
     ///
     /// Given the current time, determine if this message has
-    /// expired. It is assumed that `now` is within twelve
-    /// hours of the message issuance time. Twelve hours is
-    /// the maximum [`duration`](#method.valid_duration) of a
-    /// SAME message.
+    /// expired. It is assumed that `now` is within ±90 days of
+    /// the message's [issuance time](MessageHeader::issue_datetime).
+    /// The [maximum duration](https://www.weather.gov/nwr/samealertduration)
+    /// of a SAME message is 99.5 hours.
     ///
-    /// An expired message may still refer to an *ongoing hazard*
-    /// or event! Expiration merely indicates that the message
-    /// should not be relayed or alerted to anymore.
+    /// **An expired message may still refer to an ongoing hazard** or
+    /// event. Expiration merely indicates that the *message* is no
+    /// longer valid. Clients are encouraged to retain a history of
+    /// alerts and voice message contents.
     ///
     /// Requires `chrono`.
     #[cfg(feature = "chrono")]
     pub fn is_expired_at(&self, now: &DateTime<Utc>) -> bool {
-        match self.issue_datetime(now) {
-            Ok(issue_ts) => issue_ts + self.valid_duration() < *now,
-            Err(_e) => false,
+        if let Ok(purge) = self.purge_datetime(&now) {
+            purge < *now
+        } else {
+            false
         }
     }
 
-    /// Mesage issuance day/time (fields)
+    /// Message issuance day/time (fields)
     ///
     /// Returns the message issue day and time, as the string
     /// `JJJHHMM`,
@@ -572,12 +665,20 @@ impl MessageHeader {
 }
 
 impl fmt::Display for Message {
+    /// Wireline Text Representation
+    ///
+    /// Outputs UTF-8 string representation: i.e., `ZCZC-...`
+    /// for start-of-message or `NNNN` for end-of-message.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.as_str().fmt(f)
     }
 }
 
 impl AsRef<str> for Message {
+    /// Wireline Text Representation
+    ///
+    /// Outputs UTF-8 string representation: i.e., `ZCZC-...`
+    /// for start-of-message or `NNNN` for end-of-message.
     #[inline]
     fn as_ref(&self) -> &str {
         self.as_str()
@@ -635,12 +736,18 @@ impl TryFrom<(&[u8], &[u8], &[u8])> for Message {
 }
 
 impl fmt::Display for MessageHeader {
+    /// Wireline Text Representation
+    ///
+    /// Outputs UTF-8 string representation: i.e., `ZCZC-...`
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.message.fmt(f)
     }
 }
 
 impl AsRef<str> for MessageHeader {
+    /// Wireline Text Representation
+    ///
+    /// Outputs UTF-8 string representation: i.e., `ZCZC-...`
     #[inline]
     fn as_ref(&self) -> &str {
         self.message()
@@ -648,6 +755,9 @@ impl AsRef<str> for MessageHeader {
 }
 
 impl AsRef<[u8]> for MessageHeader {
+    /// Wireline Text Representation
+    ///
+    /// Outputs UTF-8 string representation: i.e., `ZCZC-...`
     #[inline]
     fn as_ref(&self) -> &[u8] {
         self.message().as_bytes()
@@ -751,6 +861,31 @@ fn calculate_issue_time(
         .ok_or(InvalidDateErr {})
 }
 
+/// Calculate message expiration time
+#[cfg(feature = "chrono")]
+fn calculate_expire_time(
+    issued: &DateTime<Utc>,
+    purge: &Duration,
+) -> Result<DateTime<Utc>, InvalidDateErr> {
+    use chrono::DurationRound;
+
+    const FIFTEEN_MINUTES: Duration = Duration::minutes(15);
+    const THIRTY_MINUTES: Duration = Duration::minutes(30);
+    const ONE_HOUR: Duration = Duration::hours(1);
+
+    issued
+        .checked_add_signed(*purge)
+        .and_then(|purge_unrounded| {
+            if *purge <= ONE_HOUR {
+                purge_unrounded.duration_round(FIFTEEN_MINUTES)
+            } else {
+                purge_unrounded.duration_round(THIRTY_MINUTES)
+            }
+            .ok()
+        })
+        .ok_or(InvalidDateErr {})
+}
+
 // Create the latest-possible Utc date from year, ordinal, and HMS
 #[cfg(feature = "chrono")]
 #[inline]
@@ -827,9 +962,65 @@ mod tests {
         calculate_issue_time((84, 25, 59), (2021, 84)).expect_err("should not succeed");
     }
 
+    #[cfg(feature = "chrono")]
+    #[test]
+    fn test_calculate_expire_time_short() {
+        const FIFTEEN_MINUTES: Duration = Duration::minutes(15);
+
+        let issued = Utc.with_ymd_and_hms(2021, 3, 24, 2, 44, 0).unwrap();
+        assert_eq!(
+            Utc.with_ymd_and_hms(2021, 3, 24, 3, 0, 0).unwrap(),
+            calculate_expire_time(&issued, &FIFTEEN_MINUTES).unwrap()
+        );
+
+        let issued = Utc.with_ymd_and_hms(2021, 3, 24, 2, 46, 0).unwrap();
+        assert_eq!(
+            Utc.with_ymd_and_hms(2021, 3, 24, 3, 0, 0).unwrap(),
+            calculate_expire_time(&issued, &FIFTEEN_MINUTES).unwrap()
+        );
+
+        let issued = Utc.with_ymd_and_hms(2021, 3, 24, 2, 55, 0).unwrap();
+        assert_eq!(
+            Utc.with_ymd_and_hms(2021, 3, 24, 3, 15, 0).unwrap(),
+            calculate_expire_time(&issued, &FIFTEEN_MINUTES).unwrap()
+        );
+
+        let issued = Utc.with_ymd_and_hms(2021, 3, 24, 3, 00, 0).unwrap();
+        assert_eq!(
+            Utc.with_ymd_and_hms(2021, 3, 24, 3, 15, 0).unwrap(),
+            calculate_expire_time(&issued, &FIFTEEN_MINUTES).unwrap()
+        );
+    }
+
+    #[cfg(feature = "chrono")]
+    #[test]
+    fn test_calculate_expire_time_long() {
+        let issued = Utc.with_ymd_and_hms(2021, 3, 24, 2, 53, 0).unwrap();
+
+        assert_eq!(
+            Utc.with_ymd_and_hms(2021, 3, 24, 3, 15, 0).unwrap(),
+            calculate_expire_time(&issued, &Duration::minutes(15)).unwrap()
+        );
+
+        assert_eq!(
+            Utc.with_ymd_and_hms(2021, 3, 24, 3, 30, 0).unwrap(),
+            calculate_expire_time(&issued, &Duration::minutes(30)).unwrap()
+        );
+
+        assert_eq!(
+            Utc.with_ymd_and_hms(2021, 3, 24, 3, 45, 0).unwrap(),
+            calculate_expire_time(&issued, &Duration::minutes(45)).unwrap()
+        );
+
+        assert_eq!(
+            Utc.with_ymd_and_hms(2021, 3, 24, 4, 00, 0).unwrap(),
+            calculate_expire_time(&issued, &Duration::minutes(60)).unwrap()
+        );
+    }
+
     #[test]
     fn test_message_header() {
-        const THREE_LOCATIONS: &str = "ZCZC-WXR-RWT-012345-567890-888990+0351-3662322-NOCALL00-@@@";
+        const THREE_LOCATIONS: &str = "ZCZC-WXR-RWT-012345-567890-888990+0330-3662322-NOCALL00-@@@";
 
         let mut errs = vec![0u8; THREE_LOCATIONS.len()];
         errs[0] = 1u8;
@@ -849,7 +1040,7 @@ mod tests {
         assert_eq!(Originator::NationalWeatherService, msg.originator());
         assert_eq!(msg.event_str(), "RWT");
         assert_eq!(msg.event().phenomenon(), Phenomenon::RequiredWeeklyTest);
-        assert_eq!(msg.valid_duration_fields(), (3, 51));
+        assert_eq!(msg.valid_duration_fields(), (3, 30));
         assert_eq!(msg.issue_daytime_fields(), (366, 23, 22));
         assert_eq!(msg.callsign(), "NOCALL00");
         assert_eq!(msg.parity_error_count(), 6);
@@ -862,19 +1053,25 @@ mod tests {
         // time API checks
         #[cfg(feature = "chrono")]
         {
+            // mock system time that the message was received
+            let received = Utc.with_ymd_and_hms(2020, 12, 31, 11, 30, 34).unwrap();
+
             assert_eq!(
                 Utc.with_ymd_and_hms(2020, 12, 31, 23, 22, 00).unwrap(),
-                msg.issue_datetime(&Utc.with_ymd_and_hms(2020, 12, 31, 11, 30, 34).unwrap())
-                    .unwrap()
+                msg.issue_datetime(&received).unwrap()
             );
             assert_eq!(
                 msg.valid_duration(),
-                Duration::hours(3) + Duration::minutes(51)
+                Duration::hours(3) + Duration::minutes(30)
+            );
+            assert_eq!(
+                Utc.with_ymd_and_hms(2021, 1, 1, 3, 0, 00).unwrap(),
+                msg.purge_datetime(&received).unwrap()
             );
             assert!(!msg.is_expired_at(&Utc.with_ymd_and_hms(2020, 12, 31, 23, 59, 0).unwrap()));
             assert!(!msg.is_expired_at(&Utc.with_ymd_and_hms(2021, 1, 1, 1, 20, 30).unwrap()));
-            assert!(!msg.is_expired_at(&Utc.with_ymd_and_hms(2021, 1, 1, 3, 13, 00).unwrap()));
-            assert!(msg.is_expired_at(&Utc.with_ymd_and_hms(2021, 1, 1, 3, 13, 01).unwrap()));
+            assert!(!msg.is_expired_at(&Utc.with_ymd_and_hms(2021, 1, 1, 2, 59, 59).unwrap()));
+            assert!(msg.is_expired_at(&Utc.with_ymd_and_hms(2021, 1, 1, 3, 0, 01).unwrap()));
         }
 
         // try again via Message

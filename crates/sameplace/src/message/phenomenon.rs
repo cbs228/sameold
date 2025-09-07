@@ -19,7 +19,7 @@ use strum::{EnumMessage, EnumProperty};
 /// special action…
 ///
 /// ```
-/// # use sameold::Phenomenon;
+/// # use sameplace::Phenomenon;
 /// # let phenomenon = Phenomenon::Flood;
 /// match phenomenon {
 ///     Phenomenon::Flood => println!("this message describes a flood"),
@@ -35,10 +35,10 @@ use strum::{EnumMessage, EnumProperty};
 ///
 /// **⚠️ When in doubt, play the message and let the user decide! ⚠️**
 ///
-/// sameold *does* separate Phenomenon into broad categories. These include:
+/// sameplace *does* separate Phenomenon into broad categories. These include:
 ///
 /// ```
-/// # use sameold::Phenomenon;
+/// # use sameplace::Phenomenon;
 /// assert!(Phenomenon::NationalPeriodicTest.is_national());
 /// assert!(Phenomenon::NationalPeriodicTest.is_test());
 /// assert!(Phenomenon::SevereThunderstorm.is_weather());
@@ -49,7 +49,7 @@ use strum::{EnumMessage, EnumProperty};
 /// without its significance level.
 ///
 /// ```
-/// # use sameold::Phenomenon;
+/// # use sameplace::Phenomenon;
 /// use std::fmt;
 ///
 /// assert_eq!(format!("{}", Phenomenon::HazardousMaterials), "Hazardous Materials");
@@ -378,7 +378,7 @@ impl Phenomenon {
     /// For example,
     ///
     /// ```
-    /// # use sameold::Phenomenon;
+    /// # use sameplace::Phenomenon;
     /// assert_eq!(Phenomenon::RadiologicalHazard.as_brief_str(), "Radiological Hazard");
     /// ```
     ///
@@ -445,7 +445,7 @@ impl Phenomenon {
     /// True if the phenomenon is not recognized
     ///
     /// ```
-    /// # use sameold::Phenomenon;
+    /// # use sameplace::Phenomenon;
     /// assert!(Phenomenon::Unrecognized.is_unrecognized());
     /// ```
     pub fn is_unrecognized(&self) -> bool {
@@ -455,7 +455,7 @@ impl Phenomenon {
     /// True if the phenomenon is recognized
     ///
     /// ```
-    /// # use sameold::Phenomenon;
+    /// # use sameplace::Phenomenon;
     /// assert!(Phenomenon::TropicalStorm.is_recognized());
     /// ```
     ///

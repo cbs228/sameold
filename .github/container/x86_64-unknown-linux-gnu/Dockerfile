@@ -32,4 +32,7 @@ ENV CARGO_BUILD_TARGET="$RUST_TARGET" \
 
 USER builder
 
+ARG SOURCE_REV=nogit
+
 LABEL org.opencontainers.image.description="A Debian-based Rust cross-compiling environment."
+LABEL org.opencontainers.image.revision="$SOURCE_REV"
